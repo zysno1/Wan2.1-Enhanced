@@ -10,7 +10,7 @@
 
 -----
 
-[**Wan: Open and Advanced Large-Scale Video Generative Models**]("#") <be>
+[**Wan: Open and Advanced Large-Scale Video Generative Models**]("") <be>
 
 In this repository, we present **Wan2.1**, a comprehensive and open suite of video foundation models that pushes the boundaries of video generation. **Wan2.1** offers these key features:
 - 👍 **SOTA Performance**: **Wan2.1** consistently outperforms existing open-source models and state-of-the-art commercial solutions across multiple benchmarks.
