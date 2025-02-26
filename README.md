@@ -79,6 +79,11 @@ pip install "huggingface_hub[cli]"
 huggingface-cli download Wan-AI/Wan2.1-T2V-14B --local-dir ./Wan2.1-T2V-14B
 ```
 
+Download models using modelscope-cli:
+```
+pip install modelscope
+modelscope download Wan-AI/Wan2.1-T2V-14B --local_dir ./Wan2.1-T2V-14B
+```
 #### Run Text-to-Video Generation
 
 This repository supports two Text-to-Video models (1.3B and 14B) and two resolutions (480P and 720P). The parameters and configurations for these models are as follows:
