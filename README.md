@@ -186,7 +186,8 @@ from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepSchedu
 # Available models: Wan-AI/Wan2.1-T2V-14B-Diffusers, Wan-AI/Wan2.1-T2V-1.3B-Diffusers
 model_id = "Wan-AI/Wan2.1-T2V-14B-Diffusers"
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-scheduler = UniPCMultistepScheduler(prediction_type='flow_prediction', use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=3.0)
+flow_shift = 5.0 # 5.0 for 720P, 3.0 for 480P
+scheduler = UniPCMultistepScheduler(prediction_type='flow_prediction', use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=flow_shift)
 pipe = WanPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
 pipe.scheduler = scheduler
 pipe.to("cuda")
