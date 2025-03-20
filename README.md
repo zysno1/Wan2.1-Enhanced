@@ -147,6 +147,19 @@ python generate.py  --task t2v-1.3B --size 832*480 --ckpt_dir ./Wan2.1-T2V-1.3B 
 
 - Multi-GPU inference using FSDP + xDiT USP
 
+  We use FSDP and [xDiT](https://github.com/xdit-project/xDiT) USP to accelerate  inference.
+
+  * Ulysess Strategy
+
+    If you want to use [`Ulysses`](https://arxiv.org/abs/2309.14509) strategy, you should set `--ulysses_size $GPU_NUMS`. Note that the `num_heads` should be divisible by `ulysses_size` if you wish to use `Ulysess` strategy. For the 1.3B model, the `num_heads` is `12` which can't be divided by 8 (as most multi-GPU machines have 8 GPUs). Therefore, it is recommended to use `Ring Strategy` instead.
+
+  * Ring Strategy
+
+    If you want to use [`Ring`](https://arxiv.org/pdf/2310.01889) strategy, you should set `--ring_size $GPU_NUMS`. Note that the `sequence length` should be divisible by `ring_size` when using the `Ring` strategy.
+
+  Of course, you can also combine the use of `Ulysses` and `Ring` strategies.
+
+
 ``` sh
 pip install "xfuser>=0.4.1"
 torchrun --nproc_per_node=8 generate.py --task t2v-14B --size 1280*720 --ckpt_dir ./Wan2.1-T2V-14B --dit_fsdp --t5_fsdp --ulysses_size 8 --prompt "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage."
@@ -324,11 +337,11 @@ prompt = (
 negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
 
 output = pipe(
-    image=image, 
-    prompt=prompt, 
-    negative_prompt=negative_prompt, 
-    height=height, width=width, 
-    num_frames=81, 
+    image=image,
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    height=height, width=width,
+    num_frames=81,
     guidance_scale=5.0
 ).frames[0]
 export_to_video(output, "output.mp4", fps=16)

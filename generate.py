@@ -260,7 +260,7 @@ def generate(args):
 
     cfg = WAN_CONFIGS[args.task]
     if args.ulysses_size > 1:
-        assert cfg.num_heads % args.ulysses_size == 0, f"`num_heads` must be divisible by `ulysses_size`."
+        assert cfg.num_heads % args.ulysses_size == 0, f"`{cfg.num_heads=}` cannot be divided evenly by `{args.ulysses_size=}`."
 
     logging.info(f"Generation job args: {args}")
     logging.info(f"Generation model config: {cfg}")
