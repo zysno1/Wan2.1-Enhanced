@@ -52,6 +52,9 @@ discord = "https://discord.gg/p5XbdQV7"
 [tool.setuptools]
 packages = ["wan"]
 
+[tool.setuptools.package-data]
+"wan" = ["**/*.py"]
+
 [tool.black]
 line-length = 88
 
