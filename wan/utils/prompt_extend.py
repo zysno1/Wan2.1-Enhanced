@@ -137,12 +137,14 @@ class PromptExpander:
 
     def __call__(self,
                  prompt,
+                 system_prompt=None,
                  tar_lang="zh",
                  image=None,
                  seed=-1,
                  *args,
                  **kwargs):
-        system_prompt = self.decide_system_prompt(tar_lang=tar_lang)
+        if system_prompt is None:
+            system_prompt = self.decide_system_prompt(tar_lang=tar_lang)
         if seed < 0:
             seed = random.randint(0, sys.maxsize)
         if image is not None and self.is_vl:
