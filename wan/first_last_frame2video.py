@@ -26,7 +26,7 @@ from .utils.fm_solvers import (FlowDPMSolverMultistepScheduler,
 from .utils.fm_solvers_unipc import FlowUniPCMultistepScheduler
 
 
-class WanI2V:
+class WanFLF2V:
 
     def __init__(
         self,
@@ -128,24 +128,29 @@ class WanI2V:
 
     def generate(self,
                  input_prompt,
-                 img,
+                 first_frame,
+                 last_frame,
                  max_area=720 * 1280,
                  frame_num=81,
-                 shift=5.0,
+                 shift=16,
                  sample_solver='unipc',
-                 sampling_steps=40,
-                 guide_scale=5.0,
+                 sampling_steps=50,
+                 guide_scale=5.5,
                  n_prompt="",
                  seed=-1,
                  offload_model=True):
         r"""
-        Generates video frames from input image and text prompt using diffusion process.
+        Generates video frames from input first-last frame and text prompt using diffusion process.
 
         Args:
             input_prompt (`str`):
                 Text prompt for content generation.
-            img (PIL.Image.Image):
+            first_frame (PIL.Image.Image):
                 Input image tensor. Shape: [3, H, W]
+            last_frame (PIL.Image.Image):
+                Input image tensor. Shape: [3, H, W]
+                [NOTE] If the sizes of first_frame and last_frame are mismatched, last_frame will be cropped & resized
+                to match first_frame.
             max_area (`int`, *optional*, defaults to 720*1280):
                 Maximum pixel area for latent space calculation. Controls video resolution scaling
             frame_num (`int`, *optional*, defaults to 81):
@@ -174,19 +179,34 @@ class WanI2V:
                 - H: Frame height (from max_area)
                 - W: Frame width from max_area)
         """
-        img = TF.to_tensor(img).sub_(0.5).div_(0.5).to(self.device)
+        first_frame_size = first_frame.size
+        last_frame_size = last_frame.size
+        first_frame = TF.to_tensor(first_frame).sub_(0.5).div_(0.5).to(self.device)
+        last_frame = TF.to_tensor(last_frame).sub_(0.5).div_(0.5).to(self.device)
 
         F = frame_num
-        h, w = img.shape[1:]
-        aspect_ratio = h / w
+        first_frame_h, first_frame_w = first_frame.shape[1:]
+        aspect_ratio = first_frame_h / first_frame_w
         lat_h = round(
             np.sqrt(max_area * aspect_ratio) // self.vae_stride[1] //
             self.patch_size[1] * self.patch_size[1])
         lat_w = round(
             np.sqrt(max_area / aspect_ratio) // self.vae_stride[2] //
             self.patch_size[2] * self.patch_size[2])
-        h = lat_h * self.vae_stride[1]
-        w = lat_w * self.vae_stride[2]
+        first_frame_h = lat_h * self.vae_stride[1]
+        first_frame_w = lat_w * self.vae_stride[2]
+        if first_frame_size != last_frame_size:
+            # 1. resize
+            last_frame_resize_ratio = max(
+                first_frame_size[0] / last_frame_size[0],
+                first_frame_size[1] / last_frame_size[1]
+            )
+            last_frame_size = [
+                round(last_frame_size[0] * last_frame_resize_ratio),
+                round(last_frame_size[1] * last_frame_resize_ratio),
+            ]
+            # 2. center crop
+            last_frame = TF.center_crop(last_frame, last_frame_size)
 
         max_seq_len = ((F - 1) // self.vae_stride[0] + 1) * lat_h * lat_w // (
             self.patch_size[1] * self.patch_size[2])
@@ -205,11 +225,8 @@ class WanI2V:
             device=self.device)
 
         msk = torch.ones(1, 81, lat_h, lat_w, device=self.device)
-        msk[:, 1:] = 0
-        msk = torch.concat([
-            torch.repeat_interleave(msk[:, 0:1], repeats=4, dim=1), msk[:, 1:]
-        ],
-                           dim=1)
+        msk[:, 1: -1] = 0
+        msk = torch.concat([torch.repeat_interleave(msk[:, 0:1], repeats=4, dim=1), msk[:, 1:]], dim=1)
         msk = msk.view(1, msk.shape[1] // 4, 4, lat_h, lat_w)
         msk = msk.transpose(1, 2)[0]
 
@@ -230,18 +247,24 @@ class WanI2V:
             context_null = [t.to(self.device) for t in context_null]
 
         self.clip.model.to(self.device)
-        clip_context = self.clip.visual([img[:, None, :, :]])
+        clip_context = self.clip.visual([first_frame[:, None, :, :], last_frame[:, None, :, :]])
         if offload_model:
             self.clip.model.cpu()
 
         y = self.vae.encode([
             torch.concat([
                 torch.nn.functional.interpolate(
-                    img[None].cpu(), size=(h, w), mode='bicubic').transpose(
-                        0, 1),
-                torch.zeros(3, F - 1, h, w)
-            ],
-                         dim=1).to(self.device)
+                    first_frame[None].cpu(),
+                    size=(first_frame_h, first_frame_w),
+                    mode='bicubic'
+                ).transpose(0, 1),
+                torch.zeros(3, F - 2, first_frame_h, first_frame_w),
+                torch.nn.functional.interpolate(
+                    last_frame[None].cpu(),
+                    size=(first_frame_h, first_frame_w),
+                    mode='bicubic'
+                ).transpose(0, 1),
+            ], dim=1).to(self.device)
         ])[0]
         y = torch.concat([msk, y])
 
