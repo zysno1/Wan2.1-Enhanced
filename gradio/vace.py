@@ -210,7 +210,7 @@ class VACEInference:
                                                                          [src_mask],
                                                                          [src_ref_images],
                                                                          num_frames=num_frames,
-                                                                         image_size=SIZE_CONFIGS[f"{output_height}*{output_width}"],
+                                                                         image_size=SIZE_CONFIGS[f"{output_width}*{output_height}"],
                                                                          device=self.pipe.device)
         video = self.pipe.generate(
             prompt,

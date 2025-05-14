@@ -200,6 +200,7 @@ class WanVace(WanT2V):
         else:
             raise NotImplementedError(f'image_size {image_size} is not supported')
 
+        image_size = (image_size[1], image_size[0])
         image_sizes = []
         for i, (sub_src_video, sub_src_mask) in enumerate(zip(src_video, src_mask)):
             if sub_src_mask is not None and sub_src_video is not None:
