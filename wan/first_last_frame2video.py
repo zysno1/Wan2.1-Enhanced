@@ -21,8 +21,11 @@ from .modules.clip import CLIPModel
 from .modules.model import WanModel
 from .modules.t5 import T5EncoderModel
 from .modules.vae import WanVAE
-from .utils.fm_solvers import (FlowDPMSolverMultistepScheduler,
-                               get_sampling_sigmas, retrieve_timesteps)
+from .utils.fm_solvers import (
+    FlowDPMSolverMultistepScheduler,
+    get_sampling_sigmas,
+    retrieve_timesteps,
+)
 from .utils.fm_solvers_unipc import FlowUniPCMultistepScheduler
 
 
@@ -103,11 +106,12 @@ class WanFLF2V:
             init_on_cpu = False
 
         if use_usp:
-            from xfuser.core.distributed import \
-                get_sequence_parallel_world_size
+            from xfuser.core.distributed import get_sequence_parallel_world_size
 
-            from .distributed.xdit_context_parallel import (usp_attn_forward,
-                                                            usp_dit_forward)
+            from .distributed.xdit_context_parallel import (
+                usp_attn_forward,
+                usp_dit_forward,
+            )
             for block in self.model.blocks:
                 block.self_attn.forward = types.MethodType(
                     usp_attn_forward, block.self_attn)
@@ -181,8 +185,10 @@ class WanFLF2V:
         """
         first_frame_size = first_frame.size
         last_frame_size = last_frame.size
-        first_frame = TF.to_tensor(first_frame).sub_(0.5).div_(0.5).to(self.device)
-        last_frame = TF.to_tensor(last_frame).sub_(0.5).div_(0.5).to(self.device)
+        first_frame = TF.to_tensor(first_frame).sub_(0.5).div_(0.5).to(
+            self.device)
+        last_frame = TF.to_tensor(last_frame).sub_(0.5).div_(0.5).to(
+            self.device)
 
         F = frame_num
         first_frame_h, first_frame_w = first_frame.shape[1:]
@@ -199,8 +205,7 @@ class WanFLF2V:
             # 1. resize
             last_frame_resize_ratio = max(
                 first_frame_size[0] / last_frame_size[0],
-                first_frame_size[1] / last_frame_size[1]
-            )
+                first_frame_size[1] / last_frame_size[1])
             last_frame_size = [
                 round(last_frame_size[0] * last_frame_resize_ratio),
                 round(last_frame_size[1] * last_frame_resize_ratio),
@@ -216,8 +221,7 @@ class WanFLF2V:
         seed_g = torch.Generator(device=self.device)
         seed_g.manual_seed(seed)
         noise = torch.randn(
-            16,
-            (F - 1) // 4 + 1,
+            16, (F - 1) // 4 + 1,
             lat_h,
             lat_w,
             dtype=torch.float32,
@@ -225,8 +229,11 @@ class WanFLF2V:
             device=self.device)
 
         msk = torch.ones(1, 81, lat_h, lat_w, device=self.device)
-        msk[:, 1: -1] = 0
-        msk = torch.concat([torch.repeat_interleave(msk[:, 0:1], repeats=4, dim=1), msk[:, 1:]], dim=1)
+        msk[:, 1:-1] = 0
+        msk = torch.concat([
+            torch.repeat_interleave(msk[:, 0:1], repeats=4, dim=1), msk[:, 1:]
+        ],
+                           dim=1)
         msk = msk.view(1, msk.shape[1] // 4, 4, lat_h, lat_w)
         msk = msk.transpose(1, 2)[0]
 
@@ -247,7 +254,8 @@ class WanFLF2V:
             context_null = [t.to(self.device) for t in context_null]
 
         self.clip.model.to(self.device)
-        clip_context = self.clip.visual([first_frame[:, None, :, :], last_frame[:, None, :, :]])
+        clip_context = self.clip.visual(
+            [first_frame[:, None, :, :], last_frame[:, None, :, :]])
         if offload_model:
             self.clip.model.cpu()
 
@@ -256,15 +264,14 @@ class WanFLF2V:
                 torch.nn.functional.interpolate(
                     first_frame[None].cpu(),
                     size=(first_frame_h, first_frame_w),
-                    mode='bicubic'
-                ).transpose(0, 1),
+                    mode='bicubic').transpose(0, 1),
                 torch.zeros(3, F - 2, first_frame_h, first_frame_w),
                 torch.nn.functional.interpolate(
                     last_frame[None].cpu(),
                     size=(first_frame_h, first_frame_w),
-                    mode='bicubic'
-                ).transpose(0, 1),
-            ], dim=1).to(self.device)
+                    mode='bicubic').transpose(0, 1),
+            ],
+                         dim=1).to(self.device)
         ])[0]
         y = torch.concat([msk, y])
 

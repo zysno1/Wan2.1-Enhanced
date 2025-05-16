@@ -3,23 +3,24 @@ import torch
 import torch.cuda.amp as amp
 import torch.nn as nn
 from diffusers.configuration_utils import register_to_config
-from .model import WanModel, WanAttentionBlock, sinusoidal_embedding_1d
+
+from .model import WanAttentionBlock, WanModel, sinusoidal_embedding_1d
 
 
 class VaceWanAttentionBlock(WanAttentionBlock):
-    def __init__(
-            self,
-            cross_attn_type,
-            dim,
-            ffn_dim,
-            num_heads,
-            window_size=(-1, -1),
-            qk_norm=True,
-            cross_attn_norm=False,
-            eps=1e-6,
-            block_id=0
-    ):
-        super().__init__(cross_attn_type, dim, ffn_dim, num_heads, window_size, qk_norm, cross_attn_norm, eps)
+
+    def __init__(self,
+                 cross_attn_type,
+                 dim,
+                 ffn_dim,
+                 num_heads,
+                 window_size=(-1, -1),
+                 qk_norm=True,
+                 cross_attn_norm=False,
+                 eps=1e-6,
+                 block_id=0):
+        super().__init__(cross_attn_type, dim, ffn_dim, num_heads, window_size,
+                         qk_norm, cross_attn_norm, eps)
         self.block_id = block_id
         if block_id == 0:
             self.before_proj = nn.Linear(self.dim, self.dim)
@@ -39,19 +40,19 @@ class VaceWanAttentionBlock(WanAttentionBlock):
 
 
 class BaseWanAttentionBlock(WanAttentionBlock):
-    def __init__(
-        self,
-        cross_attn_type,
-        dim,
-        ffn_dim,
-        num_heads,
-        window_size=(-1, -1),
-        qk_norm=True,
-        cross_attn_norm=False,
-        eps=1e-6,
-        block_id=None
-    ):
-        super().__init__(cross_attn_type, dim, ffn_dim, num_heads, window_size, qk_norm, cross_attn_norm, eps)
+
+    def __init__(self,
+                 cross_attn_type,
+                 dim,
+                 ffn_dim,
+                 num_heads,
+                 window_size=(-1, -1),
+                 qk_norm=True,
+                 cross_attn_norm=False,
+                 eps=1e-6,
+                 block_id=None):
+        super().__init__(cross_attn_type, dim, ffn_dim, num_heads, window_size,
+                         qk_norm, cross_attn_norm, eps)
         self.block_id = block_id
 
     def forward(self, x, hints, context_scale=1.0, **kwargs):
@@ -62,6 +63,7 @@ class BaseWanAttentionBlock(WanAttentionBlock):
 
 
 class VaceWanModel(WanModel):
+
     @register_to_config
     def __init__(self,
                  vace_layers=None,
@@ -81,42 +83,57 @@ class VaceWanModel(WanModel):
                  qk_norm=True,
                  cross_attn_norm=True,
                  eps=1e-6):
-        super().__init__(model_type, patch_size, text_len, in_dim, dim, ffn_dim, freq_dim, text_dim, out_dim,
-                         num_heads, num_layers, window_size, qk_norm, cross_attn_norm, eps)
+        super().__init__(model_type, patch_size, text_len, in_dim, dim, ffn_dim,
+                         freq_dim, text_dim, out_dim, num_heads, num_layers,
+                         window_size, qk_norm, cross_attn_norm, eps)
 
-        self.vace_layers = [i for i in range(0, self.num_layers, 2)] if vace_layers is None else vace_layers
+        self.vace_layers = [i for i in range(0, self.num_layers, 2)
+                           ] if vace_layers is None else vace_layers
         self.vace_in_dim = self.in_dim if vace_in_dim is None else vace_in_dim
 
         assert 0 in self.vace_layers
-        self.vace_layers_mapping = {i: n for n, i in enumerate(self.vace_layers)}
+        self.vace_layers_mapping = {
+            i: n for n, i in enumerate(self.vace_layers)
+        }
 
         # blocks
         self.blocks = nn.ModuleList([
-            BaseWanAttentionBlock('t2v_cross_attn', self.dim, self.ffn_dim, self.num_heads, self.window_size, self.qk_norm,
-                                  self.cross_attn_norm, self.eps,
-                                  block_id=self.vace_layers_mapping[i] if i in self.vace_layers else None)
+            BaseWanAttentionBlock(
+                't2v_cross_attn',
+                self.dim,
+                self.ffn_dim,
+                self.num_heads,
+                self.window_size,
+                self.qk_norm,
+                self.cross_attn_norm,
+                self.eps,
+                block_id=self.vace_layers_mapping[i]
+                if i in self.vace_layers else None)
             for i in range(self.num_layers)
         ])
 
         # vace blocks
         self.vace_blocks = nn.ModuleList([
-            VaceWanAttentionBlock('t2v_cross_attn', self.dim, self.ffn_dim, self.num_heads, self.window_size, self.qk_norm,
-                                     self.cross_attn_norm, self.eps, block_id=i)
-            for i in self.vace_layers
+            VaceWanAttentionBlock(
+                't2v_cross_attn',
+                self.dim,
+                self.ffn_dim,
+                self.num_heads,
+                self.window_size,
+                self.qk_norm,
+                self.cross_attn_norm,
+                self.eps,
+                block_id=i) for i in self.vace_layers
         ])
 
         # vace patch embeddings
         self.vace_patch_embedding = nn.Conv3d(
-            self.vace_in_dim, self.dim, kernel_size=self.patch_size, stride=self.patch_size
-        )
+            self.vace_in_dim,
+            self.dim,
+            kernel_size=self.patch_size,
+            stride=self.patch_size)
 
-    def forward_vace(
-        self,
-        x,
-        vace_context,
-        seq_len,
-        kwargs
-    ):
+    def forward_vace(self, x, vace_context, seq_len, kwargs):
         # embeddings
         c = [self.vace_patch_embedding(u.unsqueeze(0)) for u in vace_context]
         c = [u.flatten(2).transpose(1, 2) for u in c]

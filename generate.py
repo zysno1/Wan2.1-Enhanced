@@ -1,28 +1,33 @@
 # Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved.
 import argparse
-from datetime import datetime
 import logging
 import os
 import sys
 import warnings
+from datetime import datetime
 
 warnings.filterwarnings('ignore')
 
-import torch, random
+import random
+
+import torch
 import torch.distributed as dist
 from PIL import Image
 
 import wan
-from wan.configs import WAN_CONFIGS, SIZE_CONFIGS, MAX_AREA_CONFIGS, SUPPORTED_SIZES
+from wan.configs import MAX_AREA_CONFIGS, SIZE_CONFIGS, SUPPORTED_SIZES, WAN_CONFIGS
 from wan.utils.prompt_extend import DashScopePromptExpander, QwenPromptExpander
-from wan.utils.utils import cache_video, cache_image, str2bool
+from wan.utils.utils import cache_image, cache_video, str2bool
+
 
 EXAMPLE_PROMPT = {
     "t2v-1.3B": {
-        "prompt": "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage.",
+        "prompt":
+            "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage.",
     },
     "t2v-14B": {
-        "prompt": "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage.",
+        "prompt":
+            "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage.",
     },
     "t2i-14B": {
         "prompt": "一个朴素端庄的美人",
@@ -34,20 +39,24 @@ EXAMPLE_PROMPT = {
             "examples/i2v_input.JPG",
     },
     "flf2v-14B": {
-            "prompt":
-                "CG动画风格，一只蓝色的小鸟从地面起飞，煽动翅膀。小鸟羽毛细腻，胸前有独特的花纹，背景是蓝天白云，阳光明媚。镜跟随小鸟向上移动，展现出小鸟飞翔的姿态和天空的广阔。近景，仰视视角。",
-            "first_frame":
-                "examples/flf2v_input_first_frame.png",
-            "last_frame":
-                "examples/flf2v_input_last_frame.png",
+        "prompt":
+            "CG动画风格，一只蓝色的小鸟从地面起飞，煽动翅膀。小鸟羽毛细腻，胸前有独特的花纹，背景是蓝天白云，阳光明媚。镜跟随小鸟向上移动，展现出小鸟飞翔的姿态和天空的广阔。近景，仰视视角。",
+        "first_frame":
+            "examples/flf2v_input_first_frame.png",
+        "last_frame":
+            "examples/flf2v_input_last_frame.png",
     },
     "vace-1.3B": {
-        "src_ref_images": 'examples/girl.png,examples/snake.png',
-        "prompt": "在一个欢乐而充满节日气氛的场景中，穿着鲜艳红色春服的小女孩正与她的可爱卡通蛇嬉戏。她的春服上绣着金色吉祥图案，散发着喜庆的气息，脸上洋溢着灿烂的笑容。蛇身呈现出亮眼的绿色，形状圆润，宽大的眼睛让它显得既友善又幽默。小女孩欢快地用手轻轻抚摸着蛇的头部，共同享受着这温馨的时刻。周围五彩斑斓的灯笼和彩带装饰着环境，阳光透过洒在她们身上，营造出一个充满友爱与幸福的新年氛围。"
+        "src_ref_images":
+            'examples/girl.png,examples/snake.png',
+        "prompt":
+            "在一个欢乐而充满节日气氛的场景中，穿着鲜艳红色春服的小女孩正与她的可爱卡通蛇嬉戏。她的春服上绣着金色吉祥图案，散发着喜庆的气息，脸上洋溢着灿烂的笑容。蛇身呈现出亮眼的绿色，形状圆润，宽大的眼睛让它显得既友善又幽默。小女孩欢快地用手轻轻抚摸着蛇的头部，共同享受着这温馨的时刻。周围五彩斑斓的灯笼和彩带装饰着环境，阳光透过洒在她们身上，营造出一个充满友爱与幸福的新年氛围。"
     },
     "vace-14B": {
-        "src_ref_images": 'examples/girl.png,examples/snake.png',
-        "prompt": "在一个欢乐而充满节日气氛的场景中，穿着鲜艳红色春服的小女孩正与她的可爱卡通蛇嬉戏。她的春服上绣着金色吉祥图案，散发着喜庆的气息，脸上洋溢着灿烂的笑容。蛇身呈现出亮眼的绿色，形状圆润，宽大的眼睛让它显得既友善又幽默。小女孩欢快地用手轻轻抚摸着蛇的头部，共同享受着这温馨的时刻。周围五彩斑斓的灯笼和彩带装饰着环境，阳光透过洒在她们身上，营造出一个充满友爱与幸福的新年氛围。"
+        "src_ref_images":
+            'examples/girl.png,examples/snake.png',
+        "prompt":
+            "在一个欢乐而充满节日气氛的场景中，穿着鲜艳红色春服的小女孩正与她的可爱卡通蛇嬉戏。她的春服上绣着金色吉祥图案，散发着喜庆的气息，脸上洋溢着灿烂的笑容。蛇身呈现出亮眼的绿色，形状圆润，宽大的眼睛让它显得既友善又幽默。小女孩欢快地用手轻轻抚摸着蛇的头部，共同享受着这温馨的时刻。周围五彩斑斓的灯笼和彩带装饰着环境，阳光透过洒在她们身上，营造出一个充满友爱与幸福的新年氛围。"
     }
 }
 
@@ -64,14 +73,12 @@ def _validate_args(args):
         if "i2v" in args.task:
             args.sample_steps = 40
 
-
     if args.sample_shift is None:
         args.sample_shift = 5.0
         if "i2v" in args.task and args.size in ["832*480", "480*832"]:
             args.sample_shift = 3.0
         elif "flf2v" in args.task or "vace" in args.task:
             args.sample_shift = 16
-
 
     # The default number of frames are 1 for text-to-image tasks and 81 for other tasks.
     if args.frame_num is None:
@@ -167,7 +174,8 @@ def _parse_args():
         "--src_ref_images",
         type=str,
         default=None,
-        help="The file list of the source reference images. Separated by ','. Default None.")
+        help="The file list of the source reference images. Separated by ','. Default None."
+    )
     parser.add_argument(
         "--prompt",
         type=str,
@@ -209,12 +217,14 @@ def _parse_args():
         "--first_frame",
         type=str,
         default=None,
-        help="[first-last frame to video] The image (first frame) to generate the video from.")
+        help="[first-last frame to video] The image (first frame) to generate the video from."
+    )
     parser.add_argument(
         "--last_frame",
         type=str,
         default=None,
-        help="[first-last frame to video] The image (last frame) to generate the video from.")
+        help="[first-last frame to video] The image (last frame) to generate the video from."
+    )
     parser.add_argument(
         "--sample_solver",
         type=str,
@@ -281,8 +291,10 @@ def generate(args):
 
     if args.ulysses_size > 1 or args.ring_size > 1:
         assert args.ulysses_size * args.ring_size == world_size, f"The number of ulysses_size and ring_size should be equal to the world size."
-        from xfuser.core.distributed import (initialize_model_parallel,
-                                             init_distributed_environment)
+        from xfuser.core.distributed import (
+            init_distributed_environment,
+            initialize_model_parallel,
+        )
         init_distributed_environment(
             rank=dist.get_rank(), world_size=dist.get_world_size())
 
@@ -295,7 +307,8 @@ def generate(args):
     if args.use_prompt_extend:
         if args.prompt_extend_method == "dashscope":
             prompt_expander = DashScopePromptExpander(
-                model_name=args.prompt_extend_model, is_vl="i2v" in args.task or "flf2v" in args.task)
+                model_name=args.prompt_extend_model,
+                is_vl="i2v" in args.task or "flf2v" in args.task)
         elif args.prompt_extend_method == "local_qwen":
             prompt_expander = QwenPromptExpander(
                 model_name=args.prompt_extend_model,
@@ -482,21 +495,22 @@ def generate(args):
             sampling_steps=args.sample_steps,
             guide_scale=args.sample_guide_scale,
             seed=args.base_seed,
-            offload_model=args.offload_model
-        )
+            offload_model=args.offload_model)
     elif "vace" in args.task:
         if args.prompt is None:
             args.prompt = EXAMPLE_PROMPT[args.task]["prompt"]
             args.src_video = EXAMPLE_PROMPT[args.task].get("src_video", None)
             args.src_mask = EXAMPLE_PROMPT[args.task].get("src_mask", None)
-            args.src_ref_images = EXAMPLE_PROMPT[args.task].get("src_ref_images", None)
+            args.src_ref_images = EXAMPLE_PROMPT[args.task].get(
+                "src_ref_images", None)
 
         logging.info(f"Input prompt: {args.prompt}")
         if args.use_prompt_extend and args.use_prompt_extend != 'plain':
             logging.info("Extending prompt ...")
             if rank == 0:
                 prompt = prompt_expander.forward(args.prompt)
-                logging.info(f"Prompt extended from '{args.prompt}' to '{prompt}'")
+                logging.info(
+                    f"Prompt extended from '{args.prompt}' to '{prompt}'")
                 input_prompt = [prompt]
             else:
                 input_prompt = [None]
@@ -517,10 +531,11 @@ def generate(args):
             t5_cpu=args.t5_cpu,
         )
 
-        src_video, src_mask, src_ref_images = wan_vace.prepare_source([args.src_video],
-                                                                    [args.src_mask],
-                                                                    [None if args.src_ref_images is None else args.src_ref_images.split(',')],
-                                                                    args.frame_num, SIZE_CONFIGS[args.size], device)
+        src_video, src_mask, src_ref_images = wan_vace.prepare_source(
+            [args.src_video], [args.src_mask], [
+                None if args.src_ref_images is None else
+                args.src_ref_images.split(',')
+            ], args.frame_num, SIZE_CONFIGS[args.size], device)
 
         logging.info(f"Generating video...")
         video = wan_vace.generate(
