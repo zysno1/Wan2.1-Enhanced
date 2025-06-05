@@ -36,6 +36,7 @@ In this repository, we present **Wan2.1**, a comprehensive and open suite of vid
 
 ## Community Works
 If your work has improved **Wan2.1** and you would like more people to see it, please inform us.
+- [ATI](https://github.com/bytedance/ATI), built on **Wan2.1-I2V-14B**, is a trajectory-based motion-control framework that unifies object, local, and camera movements in video generation. Refer to [their website](https://anytraj.github.io/) for more examples.
 - [Phantom](https://github.com/Phantom-video/Phantom) has developed a unified video generation framework for single and multi-subject references based on both **Wan2.1-T2V-1.3B** and **Wan2.1-T2V-14B**. Please refer to [their examples](https://github.com/Phantom-video/Phantom).
 - [UniAnimate-DiT](https://github.com/ali-vilab/UniAnimate-DiT), based on **Wan2.1-14B-I2V**, has trained a Human image animation model and has open-sourced the inference and training code. Feel free to enjoy it!
 - [CFG-Zero](https://github.com/WeichenFan/CFG-Zero-star) enhances **Wan2.1** (covering both T2V and I2V models) from the perspective of CFG.
