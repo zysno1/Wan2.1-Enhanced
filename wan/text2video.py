@@ -101,10 +101,6 @@ class WanT2V:
         self.model = WanModel.from_pretrained(checkpoint_dir)
         self.model.eval().requires_grad_(False)
 
-        if self.memory_profiler:
-            self.memory_profiler.log_event('dit_loaded', {'base_memory': base_memory})
-            base_memory = torch.cuda.memory_allocated()
-
         if use_usp:
             from xfuser.core.distributed import get_sequence_parallel_world_size
 
@@ -126,6 +122,10 @@ class WanT2V:
             self.model = shard_fn(self.model)
         else:
             self.model.to(self.device)
+
+        if self.memory_profiler:
+            self.memory_profiler.log_event('dit_loaded', {'base_memory': base_memory})
+            base_memory = torch.cuda.memory_allocated()
 
         self.sample_neg_prompt = config.sample_neg_prompt
 
