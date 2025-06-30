@@ -69,12 +69,24 @@ EXAMPLE_PROMPT = {
 class MemoryTracker:
     def __init__(self, logger):
         self.logger = logger
+        self.baseline_stats = {}
+
+    def set_baseline(self):
+        torch.cuda.synchronize()
+        self.baseline_stats = memory_stats()
+        self.log_memory("Baseline")
 
     def log_memory(self, tag):
-        allocated = torch.cuda.memory_allocated() / (1024 ** 2)
-        reserved = torch.cuda.memory_reserved() / (1024 ** 2)
-        self.logger.info(f"[Memory] {tag}: Allocated={allocated:.2f}MB, Reserved={reserved:.2f}MB")
-        return {'allocated': allocated, 'reserved': reserved}
+        torch.cuda.synchronize()
+        current_stats = memory_stats()
+        
+        allocated = current_stats['allocated_bytes.all.current'] / (1024**2)
+        reserved = current_stats['reserved_bytes.all.current'] / (1024**2)
+        
+        runtime_peak = (current_stats['allocated_bytes.all.peak'] - self.baseline_stats.get('allocated_bytes.all.peak', 0)) / (1024**2)
+        
+        self.logger.info(f"[Memory] {tag}: Allocated={allocated:.2f}MB, Reserved={reserved:.2f}MB, Runtime Peak={runtime_peak:.2f}MB")
+        return {'allocated': allocated, 'reserved': reserved, 'runtime_peak': runtime_peak}
 
 class MemoryProfiler:
     def __init__(self, config_name, logger, output_dir):
@@ -105,25 +117,32 @@ class MemoryProfiler:
 
     def log_event(self, event_name, metadata=None):
         torch.cuda.synchronize()
+        current_stats = memory_stats()
         event_data = {"event": event_name}
         log_message = f"[Event] {event_name}"
 
-        if metadata:
-            if 'model_name' in metadata:
-                event_data['model_name'] = metadata['model_name']
-                log_message += f" ({metadata['model_name']})"
+        if metadata and 'model_name' in metadata:
+            event_data['model_name'] = metadata['model_name']
+            log_message += f" ({metadata['model_name']})"
 
-            if 'base_memory' in metadata:
-                base_memory = metadata['base_memory']
-                current_memory = torch.cuda.memory_allocated()
-                incremental_memory = current_memory - base_memory
-                event_data["incremental_memory"] = incremental_memory
-                log_message += f": Incremental Memory = {incremental_memory / (1024*1024):.2f} MB"
-            else:
-                peak_memory = torch.cuda.max_memory_allocated()
-                event_data["peak_memory"] = peak_memory
-                log_message += f": Peak Memory = {peak_memory / (1024*1024):.2f} MB"
-        
+        # Record CUDA and PyTorch runtime memory
+        if self.memory_tracker.baseline_stats:
+            baseline = self.memory_tracker.baseline_stats
+            event_data['cuda_runtime_peak'] = (current_stats['allocated_bytes.all.peak'] - baseline['allocated_bytes.all.peak']) / (1024**2)
+            event_data['pytorch_runtime_peak'] = (current_stats['reserved_bytes.all.peak'] - baseline['reserved_bytes.all.peak']) / (1024**2)
+            log_message += f": CUDA Runtime Peak={event_data['cuda_runtime_peak']:.2f}MB, PyTorch Runtime Peak={event_data['pytorch_runtime_peak']:.2f}MB"
+
+        if metadata and 'base_memory' in metadata:
+            base_memory = metadata['base_memory']
+            current_memory = torch.cuda.memory_allocated()
+            incremental_memory = current_memory - base_memory
+            event_data["incremental_memory"] = incremental_memory
+            log_message += f", Incremental Memory = {incremental_memory / (1024*1024):.2f} MB"
+        else:
+            peak_memory = torch.cuda.max_memory_allocated()
+            event_data["peak_memory"] = peak_memory
+            log_message += f", Peak Memory = {peak_memory / (1024*1024):.2f} MB"
+
         self.events.append(event_data)
         self.logger.info(log_message)
 
@@ -729,6 +748,7 @@ if __name__ == '__main__':
         logger.setLevel(logging.INFO)
 
         memory_profiler = MemoryProfiler(config['name'], logger, config['logging']['trace_path'])
+        memory_profiler.memory_tracker.set_baseline()
         memory_profiler.start_profiling()
         memory_profiler.log_event('init')
 
