@@ -1,5 +1,5 @@
-import json
 import argparse
+import json
 from typing import List, Dict, Any
 
 def format_b_to_mb(b: int) -> float:

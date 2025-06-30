@@ -25,28 +25,115 @@ Wan2.1 是一个视频生成项目，在生成过程中涉及多个大型模型�
 
 ## 3. 测试方案
 
-### 3.1 PyTorch 性能分析实现
+### 3.1 显存消耗采集与性能分析技术方案
 
-#### 3.1.1 显存监控
+#### 3.1.1 显存监控架构设计
 
-为了更精确地分析显存使用情况，我们将显存消耗拆分为 **基础显存** 和 **激活显存** 两部分：
+为了精确测量和分析显存使用情况，我们设计了一套完整的显存监控系统，将显存消耗拆分为 **基础显存** 和 **激活显存** 两部分：
 
-- **基础显存**：模型加载后，在推理前占用的显存，主要包括模型权重、优化器状态等。
-- **激活显存**：在模型前向传播过程中，因计算产生的中间变量（激活值）所占用的显存。
+- **基础显存**：模型加载后，在推理前占用的显存，主要包括模型权重、优化器状态等
+- **激活显存**：在模型前向传播过程中，因计算产生的中间变量（激活值）所占用的显存
 
-我们将通过在模型加载和推理的关键节点记录显存快照来分别统计这两部分。具体来说，我们会记录每个模型加载后的**增量显存**，以及在推理过程中每个步骤的**激活显存**。所有的显存事件都将保存到 JSON 文件中，以便后续分析。
+#### 3.1.2 技术实现方案
 
+**1. 核心监控组件**
 
+我们实现了两个核心类来处理显存监控：
 
+```python
+class MemoryTracker:
+    """基础显存跟踪器，负责记录和格式化显存信息"""
+    def __init__(self, logger):
+        self.logger = logger
 
+    def log_memory(self, tag):
+        allocated = torch.cuda.memory_allocated() / (1024 ** 2)
+        reserved = torch.cuda.memory_reserved() / (1024 ** 2)
+        self.logger.info(f"[Memory] {tag}: Allocated={allocated:.2f}MB, Reserved={reserved:.2f}MB")
+        return {'allocated': allocated, 'reserved': reserved}
+
+class MemoryProfiler:
+    """高级显存分析器，集成PyTorch Profiler和事件记录"""
+    def __init__(self, config_name, logger, output_dir):
+        self.config_name = config_name
+        self.logger = logger
+        self.output_dir = output_dir
+        self.memory_tracker = MemoryTracker(logger)
+        self.events = []
+        self.profiler = None
+```
+
+**2. 增量显存测量**
+
+通过在关键节点记录基准显存，计算每个组件的增量显存消耗：
+
+```python
+def log_event(self, event_name, metadata=None):
+    torch.cuda.synchronize()  # 确保CUDA操作完成
+    if metadata and 'base_memory' in metadata:
+        base_memory = metadata['base_memory']
+        current_memory = torch.cuda.memory_allocated()
+        incremental_memory = current_memory - base_memory
+        self.events.append({"event": event_name, "incremental_memory": incremental_memory})
+    else:
+        peak_memory = torch.cuda.max_memory_allocated()
+        self.events.append({"event": event_name, "peak_memory": peak_memory})
+```
+
+**3. 模型加载监控实现**
+
+在模型加载的各个阶段插入监控点：
+
+```python
+# T5文本编码器加载
+base_memory = torch.cuda.memory_allocated()
+self.text_encoder = T5EncoderModel(...)
+self.memory_profiler.log_event('t5_loaded', {'base_memory': base_memory})
+
+# VAE模型加载
+base_memory = torch.cuda.memory_allocated()
+self.vae = WanVAE(...)
+self.memory_profiler.log_event('vae_loaded', {'base_memory': base_memory})
+
+# DiT模型加载
+base_memory = torch.cuda.memory_allocated()
+self.model = WanModel.from_pretrained(checkpoint_dir)
+self.memory_profiler.log_event('dit_loaded', {'base_memory': base_memory})
+```
+
+**4. PyTorch Profiler集成**
+
+集成PyTorch原生性能分析器，提供详细的计算图和显存分析：
+
+```python
+def start_profiling(self):
+    self.profiler = profile(
+        activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+        schedule=torch.profiler.schedule(
+            wait=1,
             warmup=1,
             active=3
         ),
-        on_trace_ready=torch.profiler.tensorboard_trace_handler(log_dir),
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(self.output_dir),
         record_shapes=True,
         profile_memory=True,
         with_stack=True
     )
+    self.profiler.start()
+```
+
+**5. 数据持久化**
+
+所有显存事件自动保存为JSON格式，便于后续分析：
+
+```python
+def stop_profiling(self):
+    if self.profiler:
+        self.profiler.stop()
+    if self.events:
+        log_file_path = os.path.join(self.output_dir, "memory_events.json")
+        with open(log_file_path, 'w') as f:
+            json.dump(self.events, f, indent=4)
 ```
 
 ### 3.2 推理配置方案
@@ -99,20 +186,72 @@ class MemoryProfiler:
         self.save_events()
 ```
 
-### 4.2 分析工具功能
+#### 3.1.3 显存分析工具
 
-#### 4.2.1 基础分析
+**1. 自动化分析脚本**
 
-- 显存使用统计
-  - **基础显存**：分析每个核心组件（如 T5, VAE, DiT）加载时所引起的**增量显存**消耗。
-  - **激活显存**：分析在视频生成（前向传播）的每个阶段（例如，`forward pass` 之前、`transformer` 块内部、`vae.decode` 之后）的显存使用情况。
-  - **总峰值显存**：整个生命周期内的最大显存占用。
-  - 显存碎片率和波动情况。
+我们提供了专门的分析工具 `analyze_memory.py` 来处理收集到的显存数据：
 
-- 阶段分析
-  - 模型加载显存
-  - 推理过程显存
-  - 模型切换显存
+```python
+def analyze_log_file(file_path: str) -> Dict[str, float]:
+    """解析memory_events.json文件，提取关键事件的峰值显存"""
+    with open(file_path, 'r') as f:
+        events = json.load(f)
+    
+    memory_data = {}
+    for event in events:
+        event_name = event.get("event")
+        peak_memory = event.get("peak_memory", 0)
+        incremental_memory = event.get("incremental_memory", 0)
+        if event_name:
+            memory_data[event_name] = format_b_to_mb(peak_memory or incremental_memory)
+    
+    return memory_data
+```
+
+**2. 显存分类统计**
+
+分析工具自动计算以下关键指标：
+
+- **基础显存分析**：
+  - T5文本编码器增量显存 (`t5_loaded`)
+  - VAE模型增量显存 (`vae_loaded`)
+  - DiT模型增量显存 (`dit_loaded`)
+  - 模型总基础显存 (`model_base_memory`)
+
+- **激活显存分析**：
+  - 前向传播峰值显存 (`forward_pass`)
+  - 激活显存消耗 (`activation_memory`)
+  - 总峰值显存 (`peak_memory`)
+
+- **阶段性分析**：
+  - 初始化显存基线 (`init`)
+  - 模型加载完成显存 (`model_loaded`)
+  - 推理过程显存变化
+  - 显存碎片率和波动情况
+
+**3. 报告生成**
+
+工具自动生成Markdown格式的分析报告：
+
+```python
+def generate_report(log_data: Dict[str, float], log_path: str) -> str:
+    """生成Markdown格式的显存分析报告"""
+    # 计算派生指标
+    init_mem = log_data.get("init", 0)
+    model_load_mem = log_data.get("model_loaded", 0)
+    forward_pass_mem = log_data.get("forward_pass", 0)
+    
+    base_model_mem = model_load_mem - init_mem
+    activation_mem = forward_pass_mem - model_load_mem
+    
+    # 生成详细报告表格
+    report = f"# 显存分析报告\n\n"
+    report += f"| 事件 (Event) | 峰值显存 (MB) |\n"
+    report += f"|:---|:---:|\n"
+    
+    return report
+```
 
 
 
