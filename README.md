@@ -53,29 +53,6 @@ Wan2.1 是一个视频生成项目，在生成过程中涉及多个大型模型�
 
 #### 3.2.1 配置文件结构
 
-```yaml
-name: "optimization_test_1"
-description: "使用模型分块加载和注意力切片的优化配置"
-
-model_config:
-  load_strategy: "block"     # 模型加载策略：full/block
-  precision: "fp16"         # 计算精度：fp32/fp16/bf16
-  device: "cuda"           # 运行设备
-  offload: false           # CPU 卸载开关
-
-optimization:
-  attention_slicing: true   # 注意力切片
-  gradient_checkpointing: false
-  batch_size: 1
-  micro_batch_size: 1
-  parallel_degree: 1       # 模型并行度
-
-logging:
-  profile_memory: true
-  log_interval: 10         # 记录间隔（步数）
-  trace_path: "traces/opt_test_1"
-```
-
 #### 3.2.2 测试配置矩阵
 
 | 配置名称 | 加载策略 | 精度 | 优化特性 | 并行设置 |
