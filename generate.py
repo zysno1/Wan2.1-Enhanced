@@ -128,9 +128,20 @@ class MemoryProfiler:
         # Record CUDA and PyTorch runtime memory
         if self.memory_tracker.baseline_stats:
             baseline = self.memory_tracker.baseline_stats
-            event_data['cuda_runtime_peak'] = (current_stats['allocated_bytes.all.peak'] - baseline['allocated_bytes.all.peak']) / (1024**2)
-            event_data['pytorch_runtime_peak'] = (current_stats['reserved_bytes.all.peak'] - baseline['reserved_bytes.all.peak']) / (1024**2)
-            log_message += f": CUDA Runtime Peak={event_data['cuda_runtime_peak']:.2f}MB, PyTorch Runtime Peak={event_data['pytorch_runtime_peak']:.2f}MB"
+            cuda_runtime_peak = (current_stats['allocated_bytes.all.peak'] - baseline['allocated_bytes.all.peak']) / (1024**2)
+            pytorch_runtime_peak = (current_stats['reserved_bytes.all.peak'] - baseline['reserved_bytes.all.peak']) / (1024**2)
+            
+            # Separate model memory from runtime memory
+            model_peak_memory = 0
+            if 'incremental_memory' in event_data:
+                model_peak_memory = event_data['incremental_memory'] / (1024**2)
+            
+            cuda_runtime_peak -= model_peak_memory
+            pytorch_runtime_peak -= model_peak_memory
+
+            event_data['cuda_runtime_peak'] = cuda_runtime_peak
+            event_data['pytorch_runtime_peak'] = pytorch_runtime_peak
+            log_message += f": CUDA Runtime Peak={cuda_runtime_peak:.2f}MB, PyTorch Runtime Peak={pytorch_runtime_peak:.2f}MB"
 
         if metadata and 'base_memory' in metadata:
             base_memory = metadata['base_memory']
