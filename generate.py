@@ -89,31 +89,34 @@ class MemoryTracker:
         return {'allocated': allocated, 'reserved': reserved, 'runtime_peak': runtime_peak}
 
 class MemoryProfiler:
-    def __init__(self, config_name, logger, output_dir):
-        self.config_name = config_name
+    def __init__(self, name, logger, trace_path):
+        self.name = name
         self.logger = logger
-        self.output_dir = output_dir
-        self.memory_tracker = MemoryTracker(logger)
+        self.trace_path = trace_path
         self.events = []
+        self.memory_tracker = MemoryTracker(logger)
         self.profiler = None
+        self.last_peak_stats = {}
 
     def start_profiling(self):
-        self.profiler = profile(
-            activities=[
-                ProfilerActivity.CPU,
-                ProfilerActivity.CUDA,
-            ],
-            schedule=torch.profiler.schedule(
-                wait=1,
-                warmup=1,
-                active=3
-            ),
-            on_trace_ready=torch.profiler.tensorboard_trace_handler(self.output_dir),
-            record_shapes=True,
-            profile_memory=True,
-            with_stack=True
-        )
-        self.profiler.start()
+        self.logger.info(f"Starting memory profiling for '{self.name}'")
+        self.memory_tracker.set_baseline()
+        self.last_peak_stats = torch.cuda.memory_stats()
+        if self.trace_path:
+            self.profiler = torch.profiler.profile(
+                activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+                schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=1),
+                on_trace_ready=torch.profiler.tensorboard_trace_handler(self.trace_path),
+                record_shapes=True,
+                profile_memory=True,
+                with_stack=True
+            )
+            self.profiler.start()
+
+    def stop_profiling(self):
+        if self.profiler:
+            self.profiler.stop()
+        self.logger.info(f"Finished memory profiling for '{self.name}'")
 
     def log_event(self, event_name, metadata=None):
         torch.cuda.synchronize()
@@ -125,30 +128,29 @@ class MemoryProfiler:
             event_data['model_name'] = metadata['model_name']
             log_message += f" ({metadata['model_name']})"
 
-        # Record CUDA and PyTorch runtime memory
-        if self.memory_tracker.baseline_stats:
-            baseline = self.memory_tracker.baseline_stats
-            cuda_runtime_peak = (current_stats['allocated_bytes.all.peak'] - baseline['allocated_bytes.all.peak']) / (1024**2)
-            pytorch_runtime_peak = (current_stats['reserved_bytes.all.peak'] - baseline['reserved_bytes.all.peak']) / (1024**2)
-            
-            # Separate model memory from runtime memory
-            model_peak_memory = 0
-            if 'incremental_memory' in event_data:
-                model_peak_memory = event_data['incremental_memory'] / (1024**2)
-            
-            cuda_runtime_peak -= model_peak_memory
-            pytorch_runtime_peak -= model_peak_memory
-
-            event_data['cuda_runtime_peak'] = cuda_runtime_peak
-            event_data['pytorch_runtime_peak'] = pytorch_runtime_peak
-            log_message += f": CUDA Runtime Peak={cuda_runtime_peak:.2f}MB, PyTorch Runtime Peak={pytorch_runtime_peak:.2f}MB"
-
+        # Calculate incremental memory (tensor memory)
+        incremental_memory_bytes = 0
         if metadata and 'base_memory' in metadata:
             base_memory = metadata['base_memory']
             current_memory = torch.cuda.memory_allocated()
-            incremental_memory = current_memory - base_memory
-            event_data["incremental_memory"] = incremental_memory
-            log_message += f", Incremental Memory = {incremental_memory / (1024*1024):.2f} MB"
+            incremental_memory_bytes = current_memory - base_memory
+            event_data["incremental_memory"] = incremental_memory_bytes
+
+        # Calculate peak increase since last event
+        peak_allocated_since_last = current_stats['allocated_bytes.all.peak'] - self.last_peak_stats.get('allocated_bytes.all.peak', 0)
+        peak_reserved_since_last = current_stats['reserved_bytes.all.peak'] - self.last_peak_stats.get('reserved_bytes.all.peak', 0)
+
+        # Runtime overhead is the part of the peak that is not tensor memory
+        cuda_runtime_peak_bytes = peak_allocated_since_last - incremental_memory_bytes
+        pytorch_runtime_peak_bytes = peak_reserved_since_last - incremental_memory_bytes
+
+        event_data['cuda_runtime_peak'] = cuda_runtime_peak_bytes / (1024**2)
+        event_data['pytorch_runtime_peak'] = pytorch_runtime_peak_bytes / (1024**2)
+        
+        log_message += f": CUDA Runtime Peak={event_data['cuda_runtime_peak']:.2f}MB, PyTorch Runtime Peak={event_data['pytorch_runtime_peak']:.2f}MB"
+
+        if metadata and 'base_memory' in metadata:
+            log_message += f", Incremental Memory = {incremental_memory_bytes / (1024*1024):.2f} MB"
         else:
             peak_memory = torch.cuda.max_memory_allocated()
             event_data["peak_memory"] = peak_memory
@@ -156,15 +158,9 @@ class MemoryProfiler:
 
         self.events.append(event_data)
         self.logger.info(log_message)
-
-    def stop_profiling(self):
-        if self.profiler:
-            self.profiler.stop()
-        if self.events:
-            log_file_path = os.path.join(self.output_dir, "memory_events.json")
-            with open(log_file_path, 'w') as f:
-                json.dump(self.events, f, indent=4)
-            self.logger.info(f"Memory events saved to {log_file_path}")
+        
+        # Update last stats for next event
+        self.last_peak_stats = current_stats
 
 
 
@@ -759,7 +755,6 @@ if __name__ == '__main__':
         logger.setLevel(logging.INFO)
 
         memory_profiler = MemoryProfiler(config['name'], logger, config['logging']['trace_path'])
-        memory_profiler.memory_tracker.set_baseline()
         memory_profiler.start_profiling()
         memory_profiler.log_event('init')
 
