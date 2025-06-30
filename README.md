@@ -166,9 +166,10 @@ class MemoryProfiler:
    bash tests/scripts/run_memory_tests.sh
    ```
 
-3. 数据分析
+### 2. 数据分析
+
    ```bash
-   python Wan-Test/analyze_trace_file.py profiler_logs/t2v_1.3B_480p_5s_baseline/trace.json
+   python tests/analyzer.py profiler_logs/baseline/memory_events.json
    ```
 
 ## 6. 日志格式和目录管理
