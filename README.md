@@ -198,6 +198,263 @@ Wan2.1-Enhanced/
 以下是 `generate.py` 脚本中使用的主要超参数的详细说明，这些参数控制着视频生成的各个方面。
 
 - `--task` (str): 指定要运行的任务类型。不同的任务会加载不同的模型配置。
+
+## 9. 测试场景和报告
+
+### 9.1 场景一：1.3B模型生成5秒480P视频，L40S单卡
+
+#### 9.1.1 第一部分：测试基线
+
+**配置 (`baseline.yaml`)**
+
+```yaml
+name: "baseline"
+description: "Baseline configuration without optimizations"
+
+model_config:
+  task: "t2v-1.3B"
+  size: "832*480"
+  load_strategy: "block"     # 模型加载策略：full/block
+  offload_model: "false"    # 卸载到CPU 
+  precision: "fp16"         # 计算精度：fp32/fp16/bf16
+  device: "cuda"           # 运行设备
+  offload: false           # CPU 卸载开关
+
+optimization:
+  attention_slicing: false   # 注意力切片
+  gradient_checkpointing: false
+  batch_size: 1
+  micro_batch_size: 1
+  parallel_degree: 1       # 模型并行度
+
+logging:
+  profile_memory: true
+  log_interval: 10         # 记录间隔（步数）
+  trace_path: "profiler_logs/baseline"
+```
+
+**测试结果日志**
+
+```json
+[
+    {
+        "event": "init",
+        "peak_memory": 0
+    },
+    {
+        "event": "t5_loaded",
+        "incremental_memory": 11362869248
+    },
+    {
+        "event": "vae_loaded",
+        "incremental_memory": 509557760
+    },
+    {
+        "event": "dit_loaded",
+        "incremental_memory": 5704053248
+    },
+    {
+        "event": "model_loaded",
+        "peak_memory": 24824987648
+    },
+    {
+        "event": "forward_pass",
+        "peak_memory": 24824987648
+    },
+    {
+        "event": "before_generate",
+        "incremental_memory": 0
+    },
+    {
+        "event": "step_0",
+        "incremental_memory": 35122176
+    },
+    {
+        "event": "step_1",
+        "incremental_memory": 51903488
+    }
+]
+```
+
+#### 9.1.2 第二部分：CPU模型卸载
+
+**配置 (`memory_opt.yaml`)**
+
+```yaml
+name: "memory_opt"
+description: "Optimized configuration with block loading and attention slicing"
+
+model_config:
+  task: "t2v-1.3B"
+  load_strategy: "block"     # 模型加载策略：full/block
+  precision: "fp16"          # 计算精度：fp32/fp16/bf16
+  device: "cuda"           # 运行设备
+  offload: true           # CPU 卸载开关
+
+optimization:
+  attention_slicing: true   # 注意力切片
+  gradient_checkpointing: false
+  batch_size: 1
+  micro_batch_size: 1
+  parallel_degree: 1       # 模型并行度
+
+logging:
+  profile_memory: true
+  log_interval: 10         # 记录间隔（步数）
+  trace_path: "profiler_logs/memory_opt"
+```
+
+**测试结果日志**
+
+```
+(此处预留，待填充测试结果)
+```
+
+#### 9.1.3 第三部分：注意力切片
+
+**配置 (`attention_slicing.yaml`)**
+
+```yaml
+name: "attention_slicing"
+description: "Configuration with attention slicing enabled"
+
+model_config:
+  task: "t2v-1.3B"
+  size: "832*480"
+  load_strategy: "block"     # 模型加载策略：full/block
+  offload_model: "false"    # 卸载到CPU 
+  precision: "fp16"         # 计算精度：fp32/fp16/bf16
+  device: "cuda"           # 运行设备
+  offload: false           # CPU 卸载开关
+
+optimization:
+  attention_slicing: true   # 注意力切片
+  gradient_checkpointing: false
+  batch_size: 1
+  micro_batch_size: 1
+  parallel_degree: 1       # 模型并行度
+
+logging:
+  profile_memory: true
+  log_interval: 10         # 记录间隔（步数）
+  trace_path: "profiler_logs/attention_slicing"
+```
+
+**测试结果日志**
+
+```
+(此处预留，待填充测试结果)
+```
+
+## 9. 测试场景和报告
+
+### 9.1 场景一：1.3B模型生成5秒480P视频，L40S单卡
+
+#### 9.1.1 第一部分：测试基线
+
+**配置 (`baseline.yaml`)**
+
+```yaml
+name: "baseline"
+description: "Baseline configuration without optimizations"
+
+model_config:
+  task: "t2v-1.3B"
+  size: "832*480"
+  load_strategy: "block"     # 模型加载策略：full/block
+  offload_model: "false"    # 卸载到CPU 
+  precision: "fp16"         # 计算精度：fp32/fp16/bf16
+  device: "cuda"           # 运行设备
+  offload: false           # CPU 卸载开关
+
+optimization:
+  attention_slicing: false   # 注意力切片
+  gradient_checkpointing: false
+  batch_size: 1
+  micro_batch_size: 1
+  parallel_degree: 1       # 模型并行度
+
+logging:
+  profile_memory: true
+  log_interval: 10         # 记录间隔（步数）
+  trace_path: "profiler_logs/baseline"
+```
+
+**测试结果日志**
+
+```
+(此处预留，待填充测试结果)
+```
+
+#### 9.1.2 第二部分：CPU模型卸载
+
+**配置 (`memory_opt.yaml`)**
+
+```yaml
+name: "memory_opt"
+description: "Optimized configuration with block loading and attention slicing"
+
+model_config:
+  task: "t2v-1.3B"
+  load_strategy: "block"     # 模型加载策略：full/block
+  precision: "fp16"          # 计算精度：fp32/fp16/bf16
+  device: "cuda"           # 运行设备
+  offload: true           # CPU 卸载开关
+
+optimization:
+  attention_slicing: true   # 注意力切片
+  gradient_checkpointing: false
+  batch_size: 1
+  micro_batch_size: 1
+  parallel_degree: 1       # 模型并行度
+
+logging:
+  profile_memory: true
+  log_interval: 10         # 记录间隔（步数）
+  trace_path: "profiler_logs/memory_opt"
+```
+
+**测试结果日志**
+
+```
+(此处预留，待填充测试结果)
+```
+
+#### 9.1.3 第三部分：注意力切片
+
+**配置 (`attention_slicing.yaml`)**
+
+```yaml
+name: "attention_slicing"
+description: "Configuration with attention slicing enabled"
+
+model_config:
+  task: "t2v-1.3B"
+  size: "832*480"
+  load_strategy: "block"     # 模型加载策略：full/block
+  offload_model: "false"    # 卸载到CPU 
+  precision: "fp16"         # 计算精度：fp32/fp16/bf16
+  device: "cuda"           # 运行设备
+  offload: false           # CPU 卸载开关
+
+optimization:
+  attention_slicing: true   # 注意力切片
+  gradient_checkpointing: false
+  batch_size: 1
+  micro_batch_size: 1
+  parallel_degree: 1       # 模型并行度
+
+logging:
+  profile_memory: true
+  log_interval: 10         # 记录间隔（步数）
+  trace_path: "profiler_logs/attention_slicing"
+```
+
+**测试结果日志**
+
+```
+(此处预留，待填充测试结果)
+```
   - 可选项: `t2v-1.3B`, `t2v-14B`, `t2i-14B`, `i2v-14B`, `flf2v-14B`, `vace-1.3B`, `vace-14B`。
   - 默认值: `t2v-14B`。
 
