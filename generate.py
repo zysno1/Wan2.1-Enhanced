@@ -447,7 +447,8 @@ def generate(args, memory_profiler=None):
         logging.info(
             f"Generating {'image' if 't2i' in args.task else 'video'} ...")
         if memory_profiler:
-            memory_profiler.log_event('forward_pass')
+            base_memory = torch.cuda.memory_allocated()
+            memory_profiler.log_event('before_forward_pass', {'base_memory': base_memory})
         video = wan_t2v.generate(
             args.prompt,
             size=SIZE_CONFIGS[args.size],
@@ -458,6 +459,8 @@ def generate(args, memory_profiler=None):
             guide_scale=args.sample_guide_scale,
             seed=args.base_seed,
             offload_model=args.offload_model)
+        if memory_profiler:
+            memory_profiler.log_event('after_forward_pass', {'base_memory': base_memory})
 
     elif "i2v" in args.task:
         if args.prompt is None:
@@ -508,7 +511,8 @@ def generate(args, memory_profiler=None):
 
         logging.info("Generating video ...")
         if memory_profiler:
-            memory_profiler.log_event('forward_pass')
+            base_memory = torch.cuda.memory_allocated()
+            memory_profiler.log_event('before_forward_pass', {'base_memory': base_memory})
         video = wan_i2v.generate(
             args.prompt,
             img,
@@ -520,6 +524,8 @@ def generate(args, memory_profiler=None):
             guide_scale=args.sample_guide_scale,
             seed=args.base_seed,
             offload_model=args.offload_model)
+        if memory_profiler:
+            memory_profiler.log_event('after_forward_pass', {'base_memory': base_memory})
     elif "flf2v" in args.task:
         if args.prompt is None:
             args.prompt = EXAMPLE_PROMPT[args.task]["prompt"]
@@ -568,6 +574,9 @@ def generate(args, memory_profiler=None):
         )
 
         logging.info("Generating video ...")
+        if memory_profiler:
+            base_memory = torch.cuda.memory_allocated()
+            memory_profiler.log_event('before_forward_pass', {'base_memory': base_memory})
         video = wan_flf2v.generate(
             args.prompt,
             first_frame,
@@ -580,6 +589,8 @@ def generate(args, memory_profiler=None):
             guide_scale=args.sample_guide_scale,
             seed=args.base_seed,
             offload_model=args.offload_model)
+        if memory_profiler:
+            memory_profiler.log_event('after_forward_pass', {'base_memory': base_memory})
     elif "vace" in args.task:
         if args.prompt is None:
             args.prompt = EXAMPLE_PROMPT[args.task]["prompt"]
@@ -623,6 +634,9 @@ def generate(args, memory_profiler=None):
             ], args.frame_num, SIZE_CONFIGS[args.size], device)
 
         logging.info(f"Generating video...")
+        if memory_profiler:
+            base_memory = torch.cuda.memory_allocated()
+            memory_profiler.log_event('before_forward_pass', {'base_memory': base_memory})
         video = wan_vace.generate(
             args.prompt,
             src_video,
@@ -636,6 +650,8 @@ def generate(args, memory_profiler=None):
             guide_scale=args.sample_guide_scale,
             seed=args.base_seed,
             offload_model=args.offload_model)
+        if memory_profiler:
+            memory_profiler.log_event('after_forward_pass', {'base_memory': base_memory})
     else:
         raise ValueError(f"Unkown task type: {args.task}")
 
