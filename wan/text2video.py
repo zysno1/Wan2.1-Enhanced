@@ -38,6 +38,7 @@ class WanT2V:
         dit_fsdp=False,
         use_usp=False,
         t5_cpu=False,
+        memory_profiler=None,
     ):
         r"""
         Initializes the Wan text-to-video generation model components.
@@ -69,23 +70,40 @@ class WanT2V:
         self.param_dtype = config.param_dtype
 
         shard_fn = partial(shard_model, device_id=device_id)
+        self.memory_profiler = memory_profiler
+
+        if self.memory_profiler:
+            base_memory = torch.cuda.memory_allocated()
+
         self.text_encoder = T5EncoderModel(
             text_len=config.text_len,
             dtype=config.t5_dtype,
-            device=torch.device('cpu'),
+            device=self.device,
             checkpoint_path=os.path.join(checkpoint_dir, config.t5_checkpoint),
             tokenizer_path=os.path.join(checkpoint_dir, config.t5_tokenizer),
             shard_fn=shard_fn if t5_fsdp else None)
+        if self.memory_profiler:
+            self.memory_profiler.log_event('t5_loaded', {'base_memory': base_memory})
+            base_memory = torch.cuda.memory_allocated()
 
         self.vae_stride = config.vae_stride
         self.patch_size = config.patch_size
+
         self.vae = WanVAE(
             vae_pth=os.path.join(checkpoint_dir, config.vae_checkpoint),
             device=self.device)
 
+        if self.memory_profiler:
+            self.memory_profiler.log_event('vae_loaded', {'base_memory': base_memory})
+            base_memory = torch.cuda.memory_allocated()
+
         logging.info(f"Creating WanModel from {checkpoint_dir}")
         self.model = WanModel.from_pretrained(checkpoint_dir)
         self.model.eval().requires_grad_(False)
+
+        if self.memory_profiler:
+            self.memory_profiler.log_event('dit_loaded', {'base_memory': base_memory})
+            base_memory = torch.cuda.memory_allocated()
 
         if use_usp:
             from xfuser.core.distributed import get_sequence_parallel_world_size
@@ -155,6 +173,8 @@ class WanT2V:
                 - H: Frame height (from size)
                 - W: Frame width from size)
         """
+
+
         # preprocess
         F = frame_num
         target_shape = (self.vae.model.z_dim, (F - 1) // self.vae_stride[0] + 1,
@@ -171,10 +191,11 @@ class WanT2V:
         seed_g = torch.Generator(device=self.device)
         seed_g.manual_seed(seed)
 
+        # preprocess
         if not self.t5_cpu:
             self.text_encoder.model.to(self.device)
-            context = self.text_encoder([input_prompt], self.device)
-            context_null = self.text_encoder([n_prompt], self.device)
+            context = self.text_encoder([input_prompt])
+            context_null = self.text_encoder([n_prompt])
             if offload_model:
                 self.text_encoder.model.cpu()
         else:
@@ -182,6 +203,13 @@ class WanT2V:
             context_null = self.text_encoder([n_prompt], torch.device('cpu'))
             context = [t.to(self.device) for t in context]
             context_null = [t.to(self.device) for t in context_null]
+
+
+
+        # forward pass
+        if self.memory_profiler:
+            base_memory = torch.cuda.memory_allocated()
+            self.memory_profiler.log_event('before_generate', {'base_memory': base_memory})
 
         noise = [
             torch.randn(
@@ -193,7 +221,6 @@ class WanT2V:
                 device=self.device,
                 generator=seed_g)
         ]
-
         @contextmanager
         def noop_no_sync():
             yield
@@ -202,7 +229,6 @@ class WanT2V:
 
         # evaluation mode
         with amp.autocast(dtype=self.param_dtype), torch.no_grad(), no_sync():
-
             if sample_solver == 'unipc':
                 sample_scheduler = FlowUniPCMultistepScheduler(
                     num_train_timesteps=self.num_train_timesteps,
@@ -245,6 +271,9 @@ class WanT2V:
                 noise_pred = noise_pred_uncond + guide_scale * (
                     noise_pred_cond - noise_pred_uncond)
 
+                if self.memory_profiler:
+                    self.memory_profiler.log_event(f'step_{_}', {'base_memory': base_memory})
+
                 temp_x0 = sample_scheduler.step(
                     noise_pred.unsqueeze(0),
                     t,
@@ -253,19 +282,25 @@ class WanT2V:
                     generator=seed_g)[0]
                 latents = [temp_x0.squeeze(0)]
 
-            x0 = latents
-            if offload_model:
-                self.model.cpu()
-                torch.cuda.empty_cache()
-            if self.rank == 0:
-                videos = self.vae.decode(x0)
+            z = latents
 
-        del noise, latents
-        del sample_scheduler
         if offload_model:
-            gc.collect()
-            torch.cuda.synchronize()
-        if dist.is_initialized():
-            dist.barrier()
+            self.model.cpu()
+            torch.cuda.empty_cache()
 
-        return videos[0] if self.rank == 0 else None
+        videos = None
+        if self.rank == 0:
+            videos = self.vae.decode(z)
+            if self.memory_profiler:
+                self.memory_profiler.log_event('after_decode', {'base_memory': base_memory})
+
+        # release memory
+        del context
+        del context_null
+        del noise
+        del latents
+        del z
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        return videos

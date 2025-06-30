@@ -503,11 +503,11 @@ class T5EncoderModel:
         self.tokenizer = HuggingfaceTokenizer(
             name=tokenizer_path, seq_len=text_len, clean='whitespace')
 
-    def __call__(self, texts, device):
+    def __call__(self, texts):
         ids, mask = self.tokenizer(
             texts, return_mask=True, add_special_tokens=True)
-        ids = ids.to(device)
-        mask = mask.to(device)
+        ids = ids.to(self.device)
+        mask = mask.to(self.device)
         seq_lens = mask.gt(0).sum(dim=1).long()
         context = self.model(ids, mask)
         return [u[:v] for u, v in zip(context, seq_lens)]

@@ -76,6 +76,9 @@ class WanI2V:
         self.param_dtype = config.param_dtype
 
         shard_fn = partial(shard_model, device_id=device_id)
+        if self.memory_profiler:
+            base_memory = torch.cuda.memory_allocated()
+
         self.text_encoder = T5EncoderModel(
             text_len=config.text_len,
             dtype=config.t5_dtype,
@@ -84,12 +87,18 @@ class WanI2V:
             tokenizer_path=os.path.join(checkpoint_dir, config.t5_tokenizer),
             shard_fn=shard_fn if t5_fsdp else None,
         )
+        if self.memory_profiler:
+            self.memory_profiler.log_event('t5_loaded', {'base_memory': base_memory})
+            base_memory = torch.cuda.memory_allocated()
 
         self.vae_stride = config.vae_stride
         self.patch_size = config.patch_size
         self.vae = WanVAE(
             vae_pth=os.path.join(checkpoint_dir, config.vae_checkpoint),
             device=self.device)
+        if self.memory_profiler:
+            self.memory_profiler.log_event('vae_loaded', {'base_memory': base_memory})
+            base_memory = torch.cuda.memory_allocated()
 
         self.clip = CLIPModel(
             dtype=config.clip_dtype,
@@ -97,6 +106,9 @@ class WanI2V:
             checkpoint_path=os.path.join(checkpoint_dir,
                                          config.clip_checkpoint),
             tokenizer_path=os.path.join(checkpoint_dir, config.clip_tokenizer))
+        if self.memory_profiler:
+            self.memory_profiler.log_event('clip_loaded', {'base_memory': base_memory})
+            base_memory = torch.cuda.memory_allocated()
 
         logging.info(f"Creating WanModel from {checkpoint_dir}")
         self.model = WanModel.from_pretrained(checkpoint_dir)
@@ -127,6 +139,9 @@ class WanI2V:
         else:
             if not init_on_cpu:
                 self.model.to(self.device)
+        if self.memory_profiler:
+            self.memory_profiler.log_event('dit_loaded', {'base_memory': base_memory})
+            base_memory = torch.cuda.memory_allocated()
 
         self.sample_neg_prompt = config.sample_neg_prompt
 
@@ -248,6 +263,10 @@ class WanI2V:
         ])[0]
         y = torch.concat([msk, y])
 
+        if self.memory_profiler:
+            base_memory = torch.cuda.memory_allocated()
+            self.memory_profiler.log_event('before_generate', {'base_memory': base_memory})
+
         @contextmanager
         def noop_no_sync():
             yield
@@ -318,6 +337,9 @@ class WanI2V:
                 noise_pred = noise_pred_uncond + guide_scale * (
                     noise_pred_cond - noise_pred_uncond)
 
+                if self.memory_profiler:
+                    self.memory_profiler.log_event(f'step_{_}', {'base_memory': base_memory})
+
                 latent = latent.to(
                     torch.device('cpu') if offload_model else self.device)
 
@@ -338,6 +360,8 @@ class WanI2V:
 
             if self.rank == 0:
                 videos = self.vae.decode(x0)
+                if self.memory_profiler:
+                    self.memory_profiler.log_event('after_decode', {'base_memory': base_memory})
 
         del noise, latent
         del sample_scheduler

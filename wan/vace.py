@@ -46,6 +46,7 @@ class WanVace(WanT2V):
         dit_fsdp=False,
         use_usp=False,
         t5_cpu=False,
+        memory_profiler=None,
     ):
         r"""
         Initializes the Wan text-to-video generation model components.
@@ -75,6 +76,7 @@ class WanVace(WanT2V):
 
         self.num_train_timesteps = config.num_train_timesteps
         self.param_dtype = config.param_dtype
+        self.memory_profiler = memory_profiler
 
         shard_fn = partial(shard_model, device_id=device_id)
         self.text_encoder = T5EncoderModel(
@@ -84,12 +86,16 @@ class WanVace(WanT2V):
             checkpoint_path=os.path.join(checkpoint_dir, config.t5_checkpoint),
             tokenizer_path=os.path.join(checkpoint_dir, config.t5_tokenizer),
             shard_fn=shard_fn if t5_fsdp else None)
+        if self.memory_profiler:
+            self.memory_profiler.log_event('t5_loaded', {'base_memory': torch.cuda.memory_allocated()})
 
         self.vae_stride = config.vae_stride
         self.patch_size = config.patch_size
         self.vae = WanVAE(
             vae_pth=os.path.join(checkpoint_dir, config.vae_checkpoint),
             device=self.device)
+        if self.memory_profiler:
+            self.memory_profiler.log_event('vae_loaded', {'base_memory': torch.cuda.memory_allocated()})
 
         logging.info(f"Creating VaceWanModel from {checkpoint_dir}")
         self.model = VaceWanModel.from_pretrained(checkpoint_dir)
@@ -122,6 +128,9 @@ class WanVace(WanT2V):
             self.model = shard_fn(self.model)
         else:
             self.model.to(self.device)
+
+        if self.memory_profiler:
+            self.memory_profiler.log_event('dit_loaded', {'base_memory': torch.cuda.memory_allocated()})
 
         self.sample_neg_prompt = config.sample_neg_prompt
 

@@ -5,6 +5,11 @@ import os
 import sys
 import warnings
 from datetime import datetime
+import yaml
+import time
+import json
+from torch.profiler import profile, record_function, ProfilerActivity
+from torch.cuda import memory_stats, memory_allocated, memory_reserved
 
 warnings.filterwarnings('ignore')
 
@@ -61,6 +66,67 @@ EXAMPLE_PROMPT = {
 }
 
 
+class MemoryTracker:
+    def __init__(self, logger):
+        self.logger = logger
+
+    def log_memory(self, tag):
+        allocated = torch.cuda.memory_allocated() / (1024 ** 2)
+        reserved = torch.cuda.memory_reserved() / (1024 ** 2)
+        self.logger.info(f"[Memory] {tag}: Allocated={allocated:.2f}MB, Reserved={reserved:.2f}MB")
+        return {'allocated': allocated, 'reserved': reserved}
+
+class MemoryProfiler:
+    def __init__(self, config_name, logger, output_dir):
+        self.config_name = config_name
+        self.logger = logger
+        self.output_dir = output_dir
+        self.memory_tracker = MemoryTracker(logger)
+        self.events = []
+        self.profiler = None
+
+    def start_profiling(self):
+        self.profiler = profile(
+            activities=[
+                ProfilerActivity.CPU,
+                ProfilerActivity.CUDA,
+            ],
+            schedule=torch.profiler.schedule(
+                wait=1,
+                warmup=1,
+                active=3
+            ),
+            on_trace_ready=torch.profiler.tensorboard_trace_handler(self.output_dir),
+            record_shapes=True,
+            profile_memory=True,
+            with_stack=True
+        )
+        self.profiler.start()
+
+    def log_event(self, event_name, metadata=None):
+        torch.cuda.synchronize()
+        if metadata and 'base_memory' in metadata:
+            base_memory = metadata['base_memory']
+            current_memory = torch.cuda.memory_allocated()
+            incremental_memory = current_memory - base_memory
+            self.events.append({"event": event_name, "incremental_memory": incremental_memory})
+            self.logger.info(f"[Event] {event_name}: Incremental Memory = {incremental_memory / (1024*1024):.2f} MB")
+        else:
+            peak_memory = torch.cuda.max_memory_allocated()
+            self.events.append({"event": event_name, "peak_memory": peak_memory})
+            self.logger.info(f"[Event] {event_name}: Peak Memory = {peak_memory / (1024*1024):.2f} MB")
+
+    def stop_profiling(self):
+        if self.profiler:
+            self.profiler.stop()
+        if self.events:
+            log_file_path = os.path.join(self.output_dir, "memory_events.json")
+            with open(log_file_path, 'w') as f:
+                json.dump(self.events, f, indent=4)
+            self.logger.info(f"Memory events saved to {log_file_path}")
+
+
+
 def _validate_args(args):
     # Basic check
     assert args.ckpt_dir is not None, "Please specify the checkpoint directory."
@@ -99,6 +165,12 @@ def _validate_args(args):
 def _parse_args():
     parser = argparse.ArgumentParser(
         description="Generate a image or video from a text prompt or image using Wan"
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="The path to the configuration file."
     )
     parser.add_argument(
         "--task",
@@ -263,7 +335,7 @@ def _init_logging(rank):
         logging.basicConfig(level=logging.ERROR)
 
 
-def generate(args):
+def generate(args, memory_profiler=None):
     rank = int(os.getenv("RANK", 0))
     world_size = int(os.getenv("WORLD_SIZE", 1))
     local_rank = int(os.getenv("LOCAL_RANK", 0))
@@ -357,6 +429,7 @@ def generate(args):
             logging.info(f"Extended prompt: {args.prompt}")
 
         logging.info("Creating WanT2V pipeline.")
+        logging.info(f"WanT2V config: {cfg}")
         wan_t2v = wan.WanT2V(
             config=cfg,
             checkpoint_dir=args.ckpt_dir,
@@ -366,10 +439,15 @@ def generate(args):
             dit_fsdp=args.dit_fsdp,
             use_usp=(args.ulysses_size > 1 or args.ring_size > 1),
             t5_cpu=args.t5_cpu,
+            memory_profiler=memory_profiler,
         )
+        if memory_profiler:
+            memory_profiler.log_event('model_loaded')
 
         logging.info(
             f"Generating {'image' if 't2i' in args.task else 'video'} ...")
+        if memory_profiler:
+            memory_profiler.log_event('forward_pass')
         video = wan_t2v.generate(
             args.prompt,
             size=SIZE_CONFIGS[args.size],
@@ -423,9 +501,14 @@ def generate(args):
             dit_fsdp=args.dit_fsdp,
             use_usp=(args.ulysses_size > 1 or args.ring_size > 1),
             t5_cpu=args.t5_cpu,
+            memory_profiler=memory_profiler,
         )
+        if memory_profiler:
+            memory_profiler.log_event('model_loaded')
 
         logging.info("Generating video ...")
+        if memory_profiler:
+            memory_profiler.log_event('forward_pass')
         video = wan_i2v.generate(
             args.prompt,
             img,
@@ -481,6 +564,7 @@ def generate(args):
             dit_fsdp=args.dit_fsdp,
             use_usp=(args.ulysses_size > 1 or args.ring_size > 1),
             t5_cpu=args.t5_cpu,
+            memory_profiler=memory_profiler,
         )
 
         logging.info("Generating video ...")
@@ -529,6 +613,7 @@ def generate(args):
             dit_fsdp=args.dit_fsdp,
             use_usp=(args.ulysses_size > 1 or args.ring_size > 1),
             t5_cpu=args.t5_cpu,
+            memory_profiler=memory_profiler,
         )
 
         src_video, src_mask, src_ref_images = wan_vace.prepare_source(
@@ -554,18 +639,23 @@ def generate(args):
     else:
         raise ValueError(f"Unkown task type: {args.task}")
 
+    video_tensor = video
+    if isinstance(video, list):
+        video_tensor = video[0]
+
     if rank == 0:
         if args.save_file is None:
             formatted_time = datetime.now().strftime("%Y%m%d_%H%M%S")
             formatted_prompt = args.prompt.replace(" ", "_").replace("/",
                                                                      "_")[:50]
             suffix = '.png' if "t2i" in args.task else '.mp4'
-            args.save_file = f"{args.task}_{args.size.replace('*','x') if sys.platform=='win32' else args.size}_{args.ulysses_size}_{args.ring_size}_{formatted_prompt}_{formatted_time}" + suffix
+            task_name = getattr(args, 'task', 't2v-1.3B')
+            args.save_file = f"{task_name}_{args.size.replace('*','x') if sys.platform=='win32' else args.size}_{args.ulysses_size}_{args.ring_size}_{formatted_prompt}_{formatted_time}" + suffix
 
         if "t2i" in args.task:
             logging.info(f"Saving generated image to {args.save_file}")
             cache_image(
-                tensor=video.squeeze(1)[None],
+                tensor=video_tensor.squeeze(1)[None],
                 save_file=args.save_file,
                 nrow=1,
                 normalize=True,
@@ -573,15 +663,50 @@ def generate(args):
         else:
             logging.info(f"Saving generated video to {args.save_file}")
             cache_video(
-                tensor=video[None],
+                tensor=video_tensor[None],
                 save_file=args.save_file,
                 fps=cfg.sample_fps,
                 nrow=1,
                 normalize=True,
                 value_range=(-1, 1))
     logging.info("Finished.")
+    return video_tensor
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     args = _parse_args()
-    generate(args)
+    memory_profiler = None
+    if args.config:
+        with open(args.config, 'r') as f:
+            config = yaml.safe_load(f)
+        
+        # Update args with config values
+        if 'model_config' in config:
+            for key, value in config['model_config'].items():
+                setattr(args, key, value)
+        if 'optimization' in config:
+            for key, value in config['optimization'].items():
+                setattr(args, key, value)
+        if 'logging' in config:
+            for key, value in config['logging'].items():
+                setattr(args, key, value)
+
+        # Setup logger
+        log_path = os.path.join(config['logging']['trace_path'], 'memory_profile.log')
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        logger = logging.getLogger(config['name'])
+        handler = logging.FileHandler(log_path)
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+
+        memory_profiler = MemoryProfiler(config['name'], logger, config['logging']['trace_path'])
+        memory_profiler.start_profiling()
+        memory_profiler.log_event('init')
+
+    video = generate(args, memory_profiler=memory_profiler)
+
+    if memory_profiler:
+        memory_profiler.log_event('inference_end')
+        memory_profiler.stop_profiling()
