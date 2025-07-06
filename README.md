@@ -61,9 +61,18 @@ bash tests/scripts/run_memory_tests.sh tests/configs/baseline.yaml
 
 **测试结果**
  
- - 显存峰值：38.6 GB
- - 生成时间：约 120 秒
- - 显存分析报告：`test_report_final.md`
+ - **显存峰值**：20.39 GB (基础显存: 16.76 GB + 激活显存: 3.61 GB + 运行时开销: 3.28 GB)
+ - **生成时间**：241.18 秒
+   - 模型加载：10.38 秒
+   - T5编码：0.42 秒  
+   - DiT前向推理：223.07 秒
+   - VAE解码：8.99 秒
+ - **显存分析报告**：`enhanced_memory_analysis_report_20250706_175506.md`
+ - **详细显存分布**：
+   - DiT模型：5439.81 MB (基础) + 3226.79 MB (激活)
+   - T5模型：10836.48 MB (基础) + 17.00 MB (激活) + 17.00 MB (KV缓存)
+   - VAE模型：485.95 MB (基础) + 370.20 MB (激活)
+   - PyTorch/CUDA运行时开销：3281.73 MB
  
  **生成的视频文件**
  
