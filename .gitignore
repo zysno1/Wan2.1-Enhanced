@@ -8,6 +8,8 @@
 *.mp4
 *.mov
 *.mkv
+# Allow t2v generated videos
+!t2v-*.mp4
 *.log
 *.zip
 *.pt
