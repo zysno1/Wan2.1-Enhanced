@@ -58,13 +58,14 @@ bash tests/scripts/run_memory_tests.sh tests/configs/baseline.yaml
  
  **生成的视频文件**
  
- - 输出视频：`outputs/baseline_video.mp4`
+ - 输出视频：`t2v-1.3B_832*480_1_1_Two_anthropomorphic_cats_in_comfy_boxing_gear_and__20250706_174858.mp4`
  - 视频规格：832x480, 5秒, 16fps
- - 视频预览：
+ - 实际生成视频：
+   - `t2v-1.3B_832*480_1_1_Two_anthropomorphic_cats_in_comfy_boxing_gear_and__20250706_174111.mp4`
+   - `t2v-1.3B_832*480_1_1_Two_anthropomorphic_cats_in_comfy_boxing_gear_and__20250706_174858.mp4`
+   - `t2v-1.3B_832*480_1_1_Two_anthropomorphic_cats_in_comfy_boxing_gear_and__20250706_175503.mp4`
    
-   ![基线测试视频](outputs/baseline_video.gif)
-   
-   *展示了小猫在花园中自然流畅的动作，色彩鲜艳，细节丰富*
+   *展示了两只拟人化猫咪穿着舒适的拳击装备在聚光灯舞台上激烈对战的场景，动作流畅自然，细节丰富*
 
 #### 1.1.2 第二部分：CPU模型卸载
 
