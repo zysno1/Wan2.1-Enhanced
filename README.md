@@ -441,23 +441,20 @@ description: "Baseline configuration without optimizations"
 model_config:
   task: "t2v-1.3B"
   size: "832*480"
-  load_strategy: "block"     # 模型加载策略：full/block
-  offload_model: "false"    # 卸载到CPU 
-  precision: "fp16"         # 计算精度：fp32/fp16/bf16
-  device: "cuda"           # 运行设备
-  offload: false           # CPU 卸载开关
+  ckpt_dir: "/path/to/your/checkpoints" # 请替换为您的模型路径
 
 optimization:
-  attention_slicing: false   # 注意力切片
-  gradient_checkpointing: false
-  batch_size: 1
-  micro_batch_size: 1
-  parallel_degree: 1       # 模型并行度
+  offload_model: false
+  attention_slicing: false
 
 logging:
   profile_memory: true
-  log_interval: 10         # 记录间隔（步数）
   trace_path: "profiler_logs/baseline"
+```
+
+**执行命令**
+```bash
+python generate.py --config tests/configs/baseline.yaml
 ```
 
 **测试结果日志**
@@ -468,30 +465,29 @@ logging:
 
 #### 9.1.2 第二部分：CPU模型卸载
 
-**配置 (`memory_opt.yaml`)**
+**配置 (`cpu_offload.yaml`)**
 
 ```yaml
-name: "memory_opt"
-description: "Optimized configuration with block loading and attention slicing"
+name: "cpu_offload"
+description: "Optimized configuration with CPU model offload"
 
 model_config:
   task: "t2v-1.3B"
-  load_strategy: "block"     # 模型加载策略：full/block
-  precision: "fp16"          # 计算精度：fp32/fp16/bf16
-  device: "cuda"           # 运行设备
-  offload: true           # CPU 卸载开关
+  size: "832*480"
+  ckpt_dir: "/path/to/your/checkpoints" # 请替换为您的模型路径
 
 optimization:
-  attention_slicing: true   # 注意力切片
-  gradient_checkpointing: false
-  batch_size: 1
-  micro_batch_size: 1
-  parallel_degree: 1       # 模型并行度
+  offload_model: true
+  attention_slicing: false
 
 logging:
   profile_memory: true
-  log_interval: 10         # 记录间隔（步数）
-  trace_path: "profiler_logs/memory_opt"
+  trace_path: "profiler_logs/cpu_offload"
+```
+
+**执行命令**
+```bash
+python generate.py --config tests/configs/cpu_offload.yaml
 ```
 
 **测试结果日志**
@@ -511,23 +507,20 @@ description: "Configuration with attention slicing enabled"
 model_config:
   task: "t2v-1.3B"
   size: "832*480"
-  load_strategy: "block"     # 模型加载策略：full/block
-  offload_model: "false"    # 卸载到CPU 
-  precision: "fp16"         # 计算精度：fp32/fp16/bf16
-  device: "cuda"           # 运行设备
-  offload: false           # CPU 卸载开关
+  ckpt_dir: "/path/to/your/checkpoints" # 请替换为您的模型路径
 
 optimization:
-  attention_slicing: true   # 注意力切片
-  gradient_checkpointing: false
-  batch_size: 1
-  micro_batch_size: 1
-  parallel_degree: 1       # 模型并行度
+  offload_model: false
+  attention_slicing: true
 
 logging:
   profile_memory: true
-  log_interval: 10         # 记录间隔（步数）
   trace_path: "profiler_logs/attention_slicing"
+```
+
+**执行命令**
+```bash
+python generate.py --config tests/configs/attention_slicing.yaml
 ```
 
 **测试结果日志**
