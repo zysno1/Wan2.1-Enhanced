@@ -42,7 +42,7 @@ logging:
 
 **测试提示词**
 ```
-一只可爱的橙色小猫在阳光明媚的花园里玩耍，绿草如茵，五彩斑斓的花朵在微风中轻轻摇摆，小猫追逐着飞舞的蝴蝶，画面温馨自然，高清细腻
+Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage.
 ```
 
 **执行命令**
