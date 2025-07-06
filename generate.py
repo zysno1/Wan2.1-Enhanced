@@ -76,6 +76,9 @@ class MemoryTracker:
         self.logger.info(f"[Memory] {tag}: Allocated={allocated:.2f}MB, Reserved={reserved:.2f}MB")
         return {'allocated': allocated, 'reserved': reserved}
 
+    def get_memory_stats(self):
+        return torch.cuda.memory_stats()
+
 class MemoryProfiler:
     def __init__(self, config_name, logger, output_dir):
         self.config_name = config_name
@@ -105,35 +108,51 @@ class MemoryProfiler:
 
     def log_event(self, event_name, metadata=None):
         torch.cuda.synchronize()
-        event_data = {"event": event_name}
+        stats = self.memory_tracker.get_memory_stats()
+        current_allocated_bytes = memory_allocated()
+
+        peak_allocated_since_last = stats['allocated_bytes.all.peak']
+        peak_reserved_since_last = stats['reserved_bytes.all.peak']
+
+        # PyTorch tensors memory is the peak allocated memory
+        pytorch_tensor_peak_bytes = peak_allocated_since_last
+
+        # CUDA runtime memory is the difference between peak reserved and peak allocated
+        cuda_runtime_peak_bytes = peak_reserved_since_last - peak_allocated_since_last
+
+        event_data = {
+            'event': event_name,
+            'timestamp': time.time(),
+            'pytorch_tensor_peak_mb': pytorch_tensor_peak_bytes / (1024*1024),
+            'cuda_runtime_peak_mb': cuda_runtime_peak_bytes / (1024*1024),
+        }
+
         log_message = f"[Event] {event_name}"
 
-        if metadata:
-            if 'model_name' in metadata:
-                event_data['model_name'] = metadata['model_name']
-                log_message += f" ({metadata['model_name']})"
+        if metadata and 'model_name' in metadata:
+            event_data['model_name'] = metadata['model_name']
+            log_message += f" ({metadata['model_name']})"
 
-            if 'base_memory' in metadata:
-                base_memory = metadata['base_memory']
-                current_memory = torch.cuda.memory_allocated()
-                incremental_memory = current_memory - base_memory
-                event_data["incremental_memory"] = incremental_memory
-                log_message += f": Incremental Memory = {incremental_memory / (1024*1024):.2f} MB"
-            else:
-                peak_memory = torch.cuda.max_memory_allocated()
-                event_data["peak_memory"] = peak_memory
-                log_message += f": Peak Memory = {peak_memory / (1024*1024):.2f} MB"
+        if metadata and 'base_memory' in metadata:
+            base_memory = metadata['base_memory']
+            incremental_memory = current_allocated_bytes - base_memory
+            event_data["incremental_memory_mb"] = incremental_memory / (1024*1024)
+            log_message += f": Incremental Memory = {incremental_memory / (1024*1024):.2f} MB"
         
+        log_message += f", PyTorch Tensors Peak: {event_data['pytorch_tensor_peak_mb']:.2f} MB, CUDA Runtime Peak: {event_data['cuda_runtime_peak_mb']:.2f} MB"
+
         self.events.append(event_data)
         self.logger.info(log_message)
+        torch.cuda.reset_peak_memory_stats()
 
     def stop_profiling(self):
         if self.profiler:
             self.profiler.stop()
         if self.events:
-            log_file_path = os.path.join(self.output_dir, "memory_events.json")
+            log_file_path = os.path.join(self.output_dir, "memory_usage.log")
             with open(log_file_path, 'w') as f:
-                json.dump(self.events, f, indent=4)
+                for event in self.events:
+                    f.write(json.dumps(event) + '\n')
             self.logger.info(f"Memory events saved to {log_file_path}")
 
 
@@ -453,13 +472,13 @@ def generate(args, memory_profiler=None):
             memory_profiler=memory_profiler,
         )
         if memory_profiler:
-            memory_profiler.log_event('model_loaded')
+            memory_profiler.log_event('model_loaded', {'timestamp': time.time()})
 
         logging.info(
             f"Generating {'image' if 't2i' in args.task else 'video'} ...")
         if memory_profiler:
             base_memory = torch.cuda.memory_allocated()
-            memory_profiler.log_event('before_forward_pass', {'base_memory': base_memory, 'model_name': 't2v'})
+            memory_profiler.log_event('before_forward_pass', {'base_memory': base_memory, 'model_name': 't2v', 'timestamp': time.time()})
         video = wan_t2v.generate(
             args.prompt,
             size=SIZE_CONFIGS[args.size],
@@ -471,7 +490,7 @@ def generate(args, memory_profiler=None):
             seed=args.base_seed,
             offload_model=args.offload_model)
         if memory_profiler:
-            memory_profiler.log_event('after_forward_pass', {'base_memory': base_memory, 'model_name': 't2v'})
+            memory_profiler.log_event('after_forward_pass', {'base_memory': base_memory, 'model_name': 't2v', 'timestamp': time.time()})
 
     elif "i2v" in args.task:
         if args.prompt is None:
@@ -697,6 +716,9 @@ def generate(args, memory_profiler=None):
                 normalize=True,
                 value_range=(-1, 1))
     logging.info("Finished.")
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        logging.info("Cleared PyTorch CUDA cache.")
     return video_tensor
 
 

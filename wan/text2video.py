@@ -5,6 +5,7 @@ import math
 import os
 import random
 import sys
+import time
 import types
 from contextlib import contextmanager
 from functools import partial
@@ -140,6 +141,9 @@ class WanT2V:
                  n_prompt="",
                  seed=-1,
                  offload_model=True):
+        if self.memory_profiler:
+            self.memory_profiler.log_event('generate_start', {'timestamp': time.time()})
+            self.memory_profiler.log_event('generate_start', {'time': time.time()})
         r"""
         Generates video frames from text prompt using diffusion process.
 
@@ -194,8 +198,15 @@ class WanT2V:
         # preprocess
         if not self.t5_cpu:
             self.text_encoder.model.to(self.device)
+            base_memory_before_encode = torch.cuda.memory_allocated()
+            if self.memory_profiler:
+                self.memory_profiler.log_event('t5_encode_start', {'timestamp': time.time()})
             context = self.text_encoder([input_prompt])
             context_null = self.text_encoder([n_prompt])
+            if self.memory_profiler:
+                self.memory_profiler.log_event('t5_encode_end', {'timestamp': time.time()})
+            if self.memory_profiler:
+                self.memory_profiler.log_event('kv_cache', metadata={'model_name': 'T5', 'base_memory': base_memory_before_encode})
             if offload_model:
                 self.text_encoder.model.cpu()
         else:
@@ -256,6 +267,8 @@ class WanT2V:
             arg_c = {'context': context, 'seq_len': seq_len}
             arg_null = {'context': context_null, 'seq_len': seq_len}
 
+            if self.memory_profiler:
+                self.memory_profiler.log_event('dit_forward_start', {'timestamp': time.time()})
             for _, t in enumerate(tqdm(timesteps)):
                 latent_model_input = latents
                 timestep = [t]
@@ -281,8 +294,14 @@ class WanT2V:
                     return_dict=False,
                     generator=seed_g)[0]
                 latents = [temp_x0.squeeze(0)]
+            if self.memory_profiler:
+                self.memory_profiler.log_event('dit_forward_end', {'timestamp': time.time()})
 
             z = latents
+
+            if self.memory_profiler:
+                base_memory_after_forward = torch.cuda.memory_allocated()
+                self.memory_profiler.log_event('kv_cache', metadata={'model_name': 'DiT', 'base_memory': base_memory_after_forward})
 
         if offload_model:
             self.model.cpu()
@@ -290,7 +309,12 @@ class WanT2V:
 
         videos = None
         if self.rank == 0:
+            if self.memory_profiler:
+                self.memory_profiler.log_event('vae_decode_start', {'timestamp': time.time()})
             videos = self.vae.decode(z)
+            if self.memory_profiler:
+                self.memory_profiler.log_event('vae_decode_end', {'timestamp': time.time()})
+                self.memory_profiler.log_event('generate_end', {'timestamp': time.time()})
             if self.memory_profiler:
                 self.memory_profiler.log_event('after_decode', {'base_memory': base_memory})
 
