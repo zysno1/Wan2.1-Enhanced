@@ -1,5 +1,5 @@
 name: "attention_slicing"
-description: "Configuration with attention slicing enabled"
+description: "Attention slicing is a memory-saving technique that computes the resource-intensive attention mechanism in smaller, sequential steps to reduce peak VRAM usage, enabling large models to run on hardware with limited memory."
 
 model_config:
   task: "t2v-1.3B"
@@ -8,7 +8,8 @@ model_config:
   offload_model: "false"    # 卸载到CPU 
   precision: "fp16"         # 计算精度：fp32/fp16/bf16
   device: "cuda"           # 运行设备
-  offload: false           # CPU 卸载开关
+  offload: true           # CPU 卸载开关
+  ckpt_dir: /workspace/Wan2.1-Enhanced/Wan2.1-T2V-1.3B
 
 optimization:
   attention_slicing: true   # 注意力切片
@@ -20,4 +21,4 @@ optimization:
 logging:
   profile_memory: true
   log_interval: 10         # 记录间隔（步数）
-  trace_path: "profiler_logs/attention_slicing"
+  trace_path: "profiler_logs/baseline"

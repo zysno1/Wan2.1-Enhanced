@@ -107,10 +107,24 @@ def parse_events(events):
                         activation_memory
                     )
                 else:
-                    memory_data[target_model]['peak'] = max(
-                        memory_data[target_model]['peak'], 
-                        activation_memory
-                    )
+                    # For T5 encode events, use activation memory instead of peak
+                    if 'encode' in event_name and target_model == 'T5':
+                        memory_data[target_model]['activation'] = max(
+                            memory_data[target_model]['activation'], 
+                            activation_memory
+                        )
+                    else:
+                        # For T5 encode events, use activation memory instead of peak
+                        if 'encode' in event_name and target_model == 'T5':
+                            memory_data[target_model]['activation'] = max(
+                                memory_data[target_model]['activation'], 
+                                activation_memory
+                            )
+                        else:
+                            memory_data[target_model]['peak'] = max(
+                                memory_data[target_model]['peak'], 
+                                activation_memory
+                            )
             else:
                 # Fallback to incremental_memory_mb if available
                 activation_memory = event.get('incremental_memory_mb', 0)
@@ -130,10 +144,17 @@ def parse_events(events):
                             activation_memory
                         )
                     else:
-                        memory_data[target_model]['peak'] = max(
-                            memory_data[target_model]['peak'], 
-                            activation_memory
-                        )
+                        # For T5 encode events, use activation memory instead of peak
+                        if 'encode' in event_name and target_model == 'T5':
+                            memory_data[target_model]['activation'] = max(
+                                memory_data[target_model]['activation'], 
+                                activation_memory
+                            )
+                        else:
+                            memory_data[target_model]['peak'] = max(
+                                memory_data[target_model]['peak'], 
+                                activation_memory
+                            )
 
         elif 'kv_cache' in event_name:
             # KV Cache memory handling
@@ -150,9 +171,8 @@ def parse_events(events):
                     memory_data[target_model]['kv_cache'], 
                     kv_memory
                 )
-                # For T5 model, also treat kv_cache as activation memory since T5 encode events don't have incremental_memory
-                if target_model == 'T5':
-                    memory_data[target_model]['activation'] += kv_memory
+                # For T5 model, KV cache is separate from activation memory
+                # T5 encode events may not have incremental_memory, but KV cache should not be double-counted
 
     # Calculate pure runtime overhead (excluding model components)
     # Get total peak memory from events
@@ -205,7 +225,7 @@ def parse_events(events):
         # Fallback to calculated time if 'Model Loaded' duration is not available
         durations['Model Loading'] = time_data['generate_start'] - time_data['init']
 
-    return {'memory': memory_data, 'time': durations}
+    return {'memory': memory_data, 'time': durations, 'total_peak_memory': total_peak_memory}
 
 def generate_report(analysis_results, output_file):
     """Generates a Markdown report from the analysis results, with improved format for model components and runtime."""
@@ -216,9 +236,17 @@ def generate_report(analysis_results, output_file):
         for config_name, results in sorted(analysis_results.items()):
             data = results['memory']
             durations = results['time']
+            total_peak_memory = results.get('total_peak_memory', 0)
 
             f.write(f"## Test Configuration: `{config_name}`\n\n")
             f.write("### Memory Analysis\n\n")
+            
+            # Total Peak Memory Section
+            if total_peak_memory > 0:
+                f.write("#### Total Peak Memory\n\n")
+                f.write("| Metric | Memory (MB) | Memory (GB) |\n")
+                f.write("|--------|-------------|-------------|\n")
+                f.write(f"| **Total Peak Memory** | **{total_peak_memory:.2f}** | **{total_peak_memory/1024:.2f}** |\n\n")
             
             # Model Components Section
             f.write("#### Model Components\n\n")
