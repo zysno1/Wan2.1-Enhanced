@@ -286,11 +286,9 @@ def generate_report(log_data: Dict[str, float], log_path: str) -> str:
 
 2. **数据分析**
 
-   使用 `analyzer.py` 脚本分析生成的日志文件。
+   测试脚本执行完成后，会自动调用 `tests/scripts/analyze_memory.py` 来分析日志并生成增强的内存分析报告。
 
-   ```bash
-   python tests/scripts/analyze_memory.py profiler_logs/baseline/memory_events.json
-   ```
+   报告将以 `enhanced_memory_analysis_report_YYYYMMDD_HHMMSS.md` 的格式保存在项目根目录下。
 
 ## 6. 日志格式和目录管理
 
