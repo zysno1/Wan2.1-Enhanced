@@ -29,14 +29,23 @@ description: "Baseline configuration without optimizations"
 model_config:
   task: "t2v-1.3B"
   size: "832*480"
-  ckpt_dir: "/path/to/your/checkpoints" # 请替换为您的模型路径
+  load_strategy: "block"     # 模型加载策略：full/block
+  offload_model: "false"    # 卸载到CPU 
+  precision: "fp16"         # 计算精度：fp32/fp16/bf16
+  device: "cuda"           # 运行设备
+  offload: false           # CPU 卸载开关
+  ckpt_dir: /workspace/Wan2.1-Enhanced/Wan2.1-T2V-1.3B
 
 optimization:
-  offload_model: false
-  attention_slicing: false
+  attention_slicing: false   # 注意力切片
+  gradient_checkpointing: false
+  batch_size: 1
+  micro_batch_size: 1
+  parallel_degree: 1       # 模型并行度
 
 logging:
   profile_memory: true
+  log_interval: 10         # 记录间隔（步数）
   trace_path: "profiler_logs/baseline"
 ```
 
