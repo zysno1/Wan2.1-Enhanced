@@ -22,6 +22,6 @@ echo "All memory tests finished. Generating analysis report..."
 # Generate the final report
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 REPORT_FILE="enhanced_memory_analysis_report_${TIMESTAMP}.md"
-python3 analyzer.py --log_file profiler_logs/baseline/memory_usage.log --output_file "$REPORT_FILE"
+python3 tests/scripts/analyzer.py --output_file "$REPORT_FILE"
 
 echo "Memory analysis report generated at $REPORT_FILE"

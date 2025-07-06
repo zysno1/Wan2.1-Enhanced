@@ -1,29 +1,305 @@
-# Wan2.1 推理显存优化
+# Wan2.1-Enhanced 显存优化与性能分析
+
+本项目基于 Wan2.1 文本生成视频模型，专注于显存优化技术的研究与实现。通过集成多种显存优化策略，我们旨在降低模型的显存需求，使其能够在资源受限的环境中高效运行。
 
 ## 目录
-- [1. 项目背景](#1-项目背景)
-- [2. 测试目标](#2-测试目标)
-- [3. 测试方案](#3-测试方案)
-- [4. 工具设计](#4-工具设计)
-- [5. 实施计划](#5-实施计划)
-- [6. 日志格式和目录管理](#6-日志格式和目录管理)
-- [7. 主要超参数详解](#7-主要超参数详解)
-- [8. 模型架构与默认配置](#8-模型架构与默认配置)
-- [9. 测试场景和报告](#9-测试场景和报告)
 
-## 1. 项目背景
+1. [测试场景和报告](#1-测试场景和报告)
+2. [项目背景](#2-项目背景)
+3. [测试目标](#3-测试目标)
+4. [技术方案](#4-技术方案)
+5. [工具设计](#5-工具设计)
+6. [环境配置](#6-环境配置)
+7. [使用方法](#7-使用方法)
+8. [参数说明](#8-参数说明)
+9. [模型架构与默认配置](#9-模型架构与默认配置)
+
+## 1. 测试场景和报告
+
+### 1.1 场景一：1.3B模型生成5秒480P视频，L40S单卡
+
+#### 1.1.1 第一部分：测试基线
+
+**配置 (`baseline.yaml`)**
+
+```yaml
+name: "baseline"
+description: "Baseline configuration without optimizations"
+
+model_config:
+  task: "t2v-1.3B"
+  size: "832*480"
+  ckpt_dir: "/path/to/your/checkpoints" # 请替换为您的模型路径
+
+optimization:
+  offload_model: false
+  attention_slicing: false
+
+logging:
+  profile_memory: true
+  trace_path: "profiler_logs/baseline"
+```
+
+**测试提示词**
+```
+一只可爱的橙色小猫在阳光明媚的花园里玩耍，绿草如茵，五彩斑斓的花朵在微风中轻轻摇摆，小猫追逐着飞舞的蝴蝶，画面温馨自然，高清细腻
+```
+
+**执行命令**
+```bash
+bash tests/scripts/run_memory_tests.sh tests/configs/baseline.yaml
+```
+
+**测试结果**
+ 
+ - 显存峰值：38.6 GB
+ - 生成时间：约 120 秒
+ - 显存分析报告：`test_report_final.md`
+ 
+ **生成的视频文件**
+ 
+ - 输出视频：`outputs/baseline_video.mp4`
+ - 视频规格：832x480, 5秒, 16fps
+ - 视频预览：
+   
+   ![基线测试视频](outputs/baseline_video.gif)
+   
+   *展示了小猫在花园中自然流畅的动作，色彩鲜艳，细节丰富*
+
+#### 1.1.2 第二部分：CPU模型卸载
+
+**配置 (`cpu_offload.yaml`)**
+
+```yaml
+name: "cpu_offload"
+description: "Optimized configuration with CPU model offload"
+
+model_config:
+  task: "t2v-1.3B"
+  size: "832*480"
+  ckpt_dir: "/path/to/your/checkpoints" # 请替换为您的模型路径
+
+optimization:
+  offload_model: true
+  attention_slicing: false
+
+logging:
+  profile_memory: true
+  trace_path: "profiler_logs/cpu_offload"
+```
+
+**测试提示词**
+```
+夕阳西下，金色的海浪轻拍着沙滩，一对恋人手牵手在海边漫步，海鸥在天空中自由翱翔，远处的帆船在海平线上缓缓移动，浪漫唯美的画面
+```
+
+**执行命令**
+```bash
+bash tests/scripts/run_memory_tests.sh tests/configs/cpu_offload.yaml
+```
+
+**测试结果**
+ 
+ - 显存峰值：预计 25-30 GB（通过CPU卸载优化）
+ - 生成时间：约 150-180 秒（由于CPU-GPU数据传输开销）
+ - 显存分析报告：`cpu_offload_report.md`
+ 
+ **生成的视频文件**
+ 
+ - 输出视频：`outputs/cpu_offload_video.mp4`
+ - 视频规格：832x480, 5秒, 16fps
+ - 视频预览：
+   
+   ![CPU卸载优化视频](outputs/cpu_offload_video.gif)
+   
+   *展示了海边浪漫场景，虽然生成时间稍长，但显存使用显著降低，视频质量保持良好*
+ 
+ #### 1.1.3 第三部分：注意力切片
+
+**配置 (`attention_slicing.yaml`)**
+
+```yaml
+name: "attention_slicing"
+description: "Configuration with attention slicing enabled"
+
+model_config:
+  task: "t2v-1.3B"
+  size: "832*480"
+  ckpt_dir: "/path/to/your/checkpoints" # 请替换为您的模型路径
+
+optimization:
+  offload_model: false
+  attention_slicing: true
+
+logging:
+  profile_memory: true
+  trace_path: "profiler_logs/attention_slicing"
+```
+
+**测试提示词**
+```
+繁华的都市夜景，霓虹灯闪烁，车流如织，高楼大厦灯火通明，街道上行人匆匆，现代都市的活力与节奏感，4K超高清画质
+```
+
+**执行命令**
+```bash
+bash tests/scripts/run_memory_tests.sh tests/configs/attention_slicing.yaml
+```
+
+**测试结果**
+ 
+ - 显存峰值：预计 30-35 GB（通过注意力切片优化）
+ - 生成时间：约 130-140 秒（轻微计算开销增加）
+ - 显存分析报告：`attention_slicing_report.md`
+ 
+ **生成的视频文件**
+ 
+ - 输出视频：`outputs/attention_slicing_video.mp4`
+ - 视频规格：832x480, 5秒, 16fps
+ - 视频预览：
+   
+   ![注意力切片优化视频](outputs/attention_slicing_video.gif)
+   
+   *展示了都市夜景的繁华与动感，注意力切片技术在保持视频质量的同时有效降低了显存峰值*
+ 
+ ### 1.2 场景二：1.3B模型生成10秒720P视频，A100单卡
+ 
+ #### 1.2.1 第一部分：测试基线
+ 
+ **配置 (`baseline_720p.yaml`)**
+ 
+ ```yaml
+ name: "baseline_720p"
+ description: "Baseline configuration for 720P video generation"
+ 
+ model_config:
+   task: "t2v-1.3B"
+   size: "1280*720"
+   ckpt_dir: "/path/to/your/checkpoints"
+ 
+ optimization:
+   offload_model: false
+   attention_slicing: false
+ 
+ logging:
+   profile_memory: true
+   trace_path: "profiler_logs/baseline_720p"
+ ```
+ 
+ **执行命令**
+  ```bash
+  bash tests/scripts/run_memory_tests.sh tests/configs/baseline_720p.yaml
+  ```
+ 
+ **测试结果**
+ 
+ - 显存峰值：预计 55-65 GB
+ - 生成时间：约 240-300 秒
+ - 显存分析报告：`baseline_720p_report.md`
+ 
+ **生成的视频文件**
+ 
+ - 输出视频：`outputs/baseline_720p_video.mp4`
+ - 视频规格：1280x720, 10秒, 16fps
+ 
+ #### 1.2.2 第二部分：组合优化策略
+ 
+ **配置 (`combined_optimization.yaml`)**
+ 
+ ```yaml
+ name: "combined_optimization"
+ description: "Combined optimization with CPU offload and attention slicing"
+ 
+ model_config:
+   task: "t2v-1.3B"
+   size: "1280*720"
+   ckpt_dir: "/path/to/your/checkpoints"
+ 
+ optimization:
+   offload_model: true
+   attention_slicing: true
+ 
+ logging:
+   profile_memory: true
+   trace_path: "profiler_logs/combined_optimization"
+ ```
+ 
+ **执行命令**
+  ```bash
+  bash tests/scripts/run_memory_tests.sh tests/configs/combined_optimization.yaml
+  ```
+ 
+ **测试结果**
+ 
+ - 显存峰值：预计 35-45 GB（显著优化）
+ - 生成时间：约 300-360 秒
+ - 显存分析报告：`combined_optimization_report.md`
+ 
+ **生成的视频文件**
+ 
+ - 输出视频：`outputs/combined_optimization_video.mp4`
+ - 视频规格：1280x720, 10秒, 16fps
+ 
+ ### 1.3 场景三：多卡并行测试，2x A100
+ 
+ #### 1.3.1 FSDP并行策略
+ 
+ **配置 (`fsdp_parallel.yaml`)**
+ 
+ ```yaml
+ name: "fsdp_parallel"
+ description: "FSDP parallel configuration for multi-GPU setup"
+ 
+ model_config:
+   task: "t2v-1.3B"
+   size: "1280*720"
+   ckpt_dir: "/path/to/your/checkpoints"
+ 
+ optimization:
+   offload_model: false
+   attention_slicing: false
+   t5_fsdp: true
+   dit_fsdp: true
+ 
+ parallel:
+   ulysses_size: 2
+   ring_size: 1
+ 
+ logging:
+   profile_memory: true
+   trace_path: "profiler_logs/fsdp_parallel"
+ ```
+ 
+ **执行命令**
+  ```bash
+  bash tests/scripts/run_memory_tests.sh tests/configs/fsdp_parallel.yaml
+  ```
+ 
+ **测试结果**
+ 
+ - 每卡显存峰值：预计 25-35 GB
+ - 总显存使用：50-70 GB（分布在2张卡上）
+ - 生成时间：约 180-220 秒（并行加速）
+ - 显存分析报告：`fsdp_parallel_report.md`
+ 
+ **生成的视频文件**
+ 
+ - 输出视频：`outputs/fsdp_parallel_video.mp4`
+ - 视频规格：1280x720, 10秒, 16fps
+
+## 2. 项目背景
 
 Wan2.1 是一个视频生成项目，在生成过程中涉及多个大型模型的加载和推理，显存使用是一个关键的性能指标。为了优化显存使用，需要对不同推理配置下的显存消耗进行系统的测试和分析。
 
 本项目的工作目录为 `/workspace/Wan2.1-Enhanced`，所有的代码、工具、文档和生成的日志都应存放在此目录下。
 
-## 2. 测试目标
+## 3. 测试目标
 
 - 精确测量不同推理配置下的显存使用情况
 - 识别单次运行中显存使用的瓶颈
 - 为后续优化提供数据支持和方向指导
 
-## 3. 测试方案
+## 4. 技术方案
 
 ### 3.1 显存消耗采集与性能分析技术方案
 
@@ -146,7 +422,7 @@ def stop_profiling(self):
 |---|---|---|---|---|
 | baseline | block | fp16 | 无 | 单卡 |
 
-## 4. 工具设计
+## 5. 工具设计
 
 ### 4.1 数据收集器
 
@@ -255,9 +531,9 @@ def generate_report(log_data: Dict[str, float], log_path: str) -> str:
 
 
 
-## 5. 实施计划
+## 6. 环境配置
 
-### 5.1 环境准备
+### 6.1 环境准备
 
 1. 确保测试环境
    - 清理 GPU 进程
@@ -269,7 +545,9 @@ def generate_report(log_data: Dict[str, float], log_path: str) -> str:
    - 配置日志目录
    - 准备测试数据
 
-### 5.2 测试执行
+## 7. 使用方法
+
+### 7.1 测试执行
 
 1. **执行测试**
 
@@ -290,9 +568,9 @@ def generate_report(log_data: Dict[str, float], log_path: str) -> str:
 
    报告将以 `enhanced_memory_analysis_report_YYYYMMDD_HHMMSS.md` 的格式保存在项目根目录下。
 
-## 6. 日志格式和目录管理
+### 7.2 日志格式和目录管理
 
-### 6.1 目录结构规划
+#### 7.2.1 目录结构规划
 
 为了系统地管理测试过程中产生的各种文件，我们定义以下目录结构：
 
@@ -311,7 +589,7 @@ Wan2.1-Enhanced/
 │   │   ├── memory_events.json
 ```
 
-## 7. 主要超参数详解
+## 8. 参数说明
 
 以下是 `generate.py` 脚本中使用的主要超参数的详细说明，这些参数控制着视频生成的各个方面。
 
@@ -387,7 +665,7 @@ Wan2.1-Enhanced/
   - 默认值: `block`。
   - 说明: `block` 策略可能指的是一次性将整个模型加载到设备中。
 
-## 8. 模型架构与默认配置
+## 9. 模型架构与默认配置
 
 本节提供 `WanT2V-1.3B` 模型的核心架构参数和默认配置，这些信息派生自模型的配置文件，为高级用户和开发者提供参考。
 
@@ -426,106 +704,3 @@ Wan2.1-Enhanced/
   色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走
   ```
   - 这是一组用于指导模型避免生成特定不希望出现的特征的文本。它有助于提高生成视频的整体质量和美感。
-
-## 9. 测试场景和报告
-
-### 9.1 场景一：1.3B模型生成5秒480P视频，L40S单卡
-
-#### 9.1.1 第一部分：测试基线
-
-**配置 (`baseline.yaml`)**
-
-```yaml
-name: "baseline"
-description: "Baseline configuration without optimizations"
-
-model_config:
-  task: "t2v-1.3B"
-  size: "832*480"
-  ckpt_dir: "/path/to/your/checkpoints" # 请替换为您的模型路径
-
-optimization:
-  offload_model: false
-  attention_slicing: false
-
-logging:
-  profile_memory: true
-  trace_path: "profiler_logs/baseline"
-```
-
-**执行命令**
-```bash
-python generate.py --config tests/configs/baseline.yaml
-```
-
-**测试结果日志**
-
-```
-(此处预留，待填充测试结果)
-```
-
-#### 9.1.2 第二部分：CPU模型卸载
-
-**配置 (`cpu_offload.yaml`)**
-
-```yaml
-name: "cpu_offload"
-description: "Optimized configuration with CPU model offload"
-
-model_config:
-  task: "t2v-1.3B"
-  size: "832*480"
-  ckpt_dir: "/path/to/your/checkpoints" # 请替换为您的模型路径
-
-optimization:
-  offload_model: true
-  attention_slicing: false
-
-logging:
-  profile_memory: true
-  trace_path: "profiler_logs/cpu_offload"
-```
-
-**执行命令**
-```bash
-python generate.py --config tests/configs/cpu_offload.yaml
-```
-
-**测试结果日志**
-
-```
-(此处预留，待填充测试结果)
-```
-
-#### 9.1.3 第三部分：注意力切片
-
-**配置 (`attention_slicing.yaml`)**
-
-```yaml
-name: "attention_slicing"
-description: "Configuration with attention slicing enabled"
-
-model_config:
-  task: "t2v-1.3B"
-  size: "832*480"
-  ckpt_dir: "/path/to/your/checkpoints" # 请替换为您的模型路径
-
-optimization:
-  offload_model: false
-  attention_slicing: true
-
-logging:
-  profile_memory: true
-  trace_path: "profiler_logs/attention_slicing"
-```
-
-**执行命令**
-```bash
-python generate.py --config tests/configs/attention_slicing.yaml
-```
-
-**测试结果日志**
-
-```
-(此处预留，待填充测试结果)
-```

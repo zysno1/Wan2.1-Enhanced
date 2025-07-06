@@ -5,6 +5,7 @@ import math
 import os
 import random
 import sys
+
 import time
 import types
 from contextlib import contextmanager
@@ -143,7 +144,6 @@ class WanT2V:
                  offload_model=True):
         if self.memory_profiler:
             self.memory_profiler.log_event('generate_start', {'timestamp': time.time()})
-            self.memory_profiler.log_event('generate_start', {'time': time.time()})
         r"""
         Generates video frames from text prompt using diffusion process.
 
@@ -204,7 +204,7 @@ class WanT2V:
             context = self.text_encoder([input_prompt])
             context_null = self.text_encoder([n_prompt])
             if self.memory_profiler:
-                self.memory_profiler.log_event('t5_encode_end', {'timestamp': time.time()})
+                self.memory_profiler.log_event('t5_encode_end', {'timestamp': time.time(), 'base_memory': base_memory_before_encode})
             if self.memory_profiler:
                 self.memory_profiler.log_event('kv_cache', metadata={'model_name': 'T5', 'base_memory': base_memory_before_encode})
             if offload_model:
@@ -309,11 +309,12 @@ class WanT2V:
 
         videos = None
         if self.rank == 0:
+            base_memory_before_decode = torch.cuda.memory_allocated()
             if self.memory_profiler:
                 self.memory_profiler.log_event('vae_decode_start', {'timestamp': time.time()})
             videos = self.vae.decode(z)
             if self.memory_profiler:
-                self.memory_profiler.log_event('vae_decode_end', {'timestamp': time.time()})
+                self.memory_profiler.log_event('vae_decode_end', {'timestamp': time.time(), 'base_memory': base_memory_before_decode})
                 self.memory_profiler.log_event('generate_end', {'timestamp': time.time()})
             if self.memory_profiler:
                 self.memory_profiler.log_event('after_decode', {'base_memory': base_memory})

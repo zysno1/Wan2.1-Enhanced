@@ -119,17 +119,43 @@ class MemoryProfiler:
     def stop_profiling(self):
         if self.profiler:
             self.profiler.stop()
+        self.save_events()
         self.logger.info(f"Finished memory profiling for '{self.name}'")
+    
+    def save_events(self, output_dir="profiler_logs"):
+        """Save collected events to a JSON file."""
+        import os
+        import json
+        from datetime import datetime
+        
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"memory_events_{self.name}_{timestamp}.json"
+        filepath = os.path.join(output_dir, filename)
+        
+        # Save events to JSON file
+        with open(filepath, 'w') as f:
+            json.dump(self.events, f, indent=2)
+        
+        self.logger.info(f"Memory events saved to {filepath}")
+        return filepath
 
     def log_event(self, event_name, metadata=None):
         torch.cuda.synchronize()
         current_stats = memory_stats()
-        event_data = {"event": event_name}
+        event_data = {"event": event_name, "timestamp": time.time()}
         log_message = f"[Event] {event_name}"
 
-        if metadata and 'model_name' in metadata:
-            event_data['model_name'] = metadata['model_name']
-            log_message += f" ({metadata['model_name']})"
+        if metadata:
+            if 'model_name' in metadata:
+                event_data['model_name'] = metadata['model_name']
+                log_message += f" ({metadata['model_name']})"
+            if 'duration' in metadata:
+                event_data['duration'] = metadata['duration']
+                log_message += f" (Duration: {metadata['duration']:.2f}s)"
 
         # Calculate incremental memory (tensor memory)
         incremental_memory_bytes = 0
@@ -358,8 +384,6 @@ def _parse_args():
 
     args = parser.parse_args()
 
-    _validate_args(args)
-
     return args
 
 
@@ -470,6 +494,7 @@ def generate(args, memory_profiler=None):
 
         logging.info("Creating WanT2V pipeline.")
         logging.info(f"WanT2V config: {cfg}")
+        start_time = time.time()
         wan_t2v = wan.WanT2V(
             config=cfg,
             checkpoint_dir=args.ckpt_dir,
@@ -482,13 +507,19 @@ def generate(args, memory_profiler=None):
             memory_profiler=memory_profiler,
         )
         if memory_profiler:
-            memory_profiler.log_event('model_loaded', {'timestamp': time.time()})
+            duration = time.time() - start_time
+            memory_profiler.log_event('Model Loaded', {'duration': duration, 'timestamp': time.time()})
+            logging.info(f"Model loaded in {duration:.2f}s")
+            logging.info(f"Model loaded in {duration:.2f}s")
+            logging.info(f"Model loaded in {duration:.2f}s")
+            logging.info(f"Model loaded in {duration:.2f}s")
 
         logging.info(
             f"Generating {'image' if 't2i' in args.task else 'video'} ...")
+        
         if memory_profiler:
-            base_memory = torch.cuda.memory_allocated()
-            memory_profiler.log_event('before_forward_pass', {'base_memory': base_memory, 'model_name': 't2v', 'timestamp': time.time()})
+            memory_profiler.log_event('generate_start', {'timestamp': time.time()})
+        gen_start_time = time.time()
         video = wan_t2v.generate(
             args.prompt,
             size=SIZE_CONFIGS[args.size],
@@ -500,7 +531,9 @@ def generate(args, memory_profiler=None):
             seed=args.base_seed,
             offload_model=args.offload_model)
         if memory_profiler:
-            memory_profiler.log_event('after_forward_pass', {'base_memory': base_memory, 'model_name': 't2v', 'timestamp': time.time()})
+            memory_profiler.log_event('generate_end', {'timestamp': time.time()})
+            gen_duration = time.time() - gen_start_time
+            memory_profiler.log_event('Total Generation', {'duration': gen_duration, 'timestamp': time.time()})
 
     elif "i2v" in args.task:
         if args.prompt is None:
@@ -535,6 +568,7 @@ def generate(args, memory_profiler=None):
             logging.info(f"Extended prompt: {args.prompt}")
 
         logging.info("Creating WanI2V pipeline.")
+        start_time = time.time()
         wan_i2v = wan.WanI2V(
             config=cfg,
             checkpoint_dir=args.ckpt_dir,
@@ -547,12 +581,13 @@ def generate(args, memory_profiler=None):
             memory_profiler=memory_profiler,
         )
         if memory_profiler:
-            memory_profiler.log_event('model_loaded')
+            duration = time.time() - start_time
+            memory_profiler.log_event('Model Loaded', {'duration': duration, 'timestamp': time.time()})
 
         logging.info("Generating video ...")
         if memory_profiler:
-            base_memory = torch.cuda.memory_allocated()
-            memory_profiler.log_event('before_forward_pass', {'base_memory': base_memory, 'model_name': 'i2v'})
+            memory_profiler.log_event('generate_start', {'timestamp': time.time()})
+        gen_start_time = time.time()
         video = wan_i2v.generate(
             args.prompt,
             img,
@@ -565,7 +600,9 @@ def generate(args, memory_profiler=None):
             seed=args.base_seed,
             offload_model=args.offload_model)
         if memory_profiler:
-            memory_profiler.log_event('after_forward_pass', {'base_memory': base_memory, 'model_name': 'i2v'})
+            memory_profiler.log_event('generate_end', {'timestamp': time.time()})
+            gen_duration = time.time() - gen_start_time
+            memory_profiler.log_event('Total Generation', {'duration': gen_duration, 'timestamp': time.time()})
     elif "flf2v" in args.task:
         if args.prompt is None:
             args.prompt = EXAMPLE_PROMPT[args.task]["prompt"]
@@ -601,6 +638,7 @@ def generate(args, memory_profiler=None):
             logging.info(f"Extended prompt: {args.prompt}")
 
         logging.info("Creating WanFLF2V pipeline.")
+        start_time = time.time()
         wan_flf2v = wan.WanFLF2V(
             config=cfg,
             checkpoint_dir=args.ckpt_dir,
@@ -612,11 +650,14 @@ def generate(args, memory_profiler=None):
             t5_cpu=args.t5_cpu,
             memory_profiler=memory_profiler,
         )
+        if memory_profiler:
+            duration = time.time() - start_time
+            memory_profiler.log_event('Model Loaded', {'duration': duration, 'timestamp': time.time()})
 
         logging.info("Generating video ...")
         if memory_profiler:
-            base_memory = torch.cuda.memory_allocated()
-            memory_profiler.log_event('before_forward_pass', {'base_memory': base_memory, 'model_name': 'flf2v'})
+            memory_profiler.log_event('generate_start', {'timestamp': time.time()})
+        gen_start_time = time.time()
         video = wan_flf2v.generate(
             args.prompt,
             first_frame,
@@ -630,7 +671,9 @@ def generate(args, memory_profiler=None):
             seed=args.base_seed,
             offload_model=args.offload_model)
         if memory_profiler:
-            memory_profiler.log_event('after_forward_pass', {'base_memory': base_memory, 'model_name': 'flf2v'})
+            memory_profiler.log_event('generate_end', {'timestamp': time.time()})
+            gen_duration = time.time() - gen_start_time
+            memory_profiler.log_event('Total Generation', {'duration': gen_duration, 'timestamp': time.time()})
     elif "vace" in args.task:
         if args.prompt is None:
             args.prompt = EXAMPLE_PROMPT[args.task]["prompt"]
@@ -655,6 +698,7 @@ def generate(args, memory_profiler=None):
             logging.info(f"Extended prompt: {args.prompt}")
 
         logging.info("Creating VACE pipeline.")
+        start_time = time.time()
         wan_vace = wan.WanVace(
             config=cfg,
             checkpoint_dir=args.ckpt_dir,
@@ -666,6 +710,9 @@ def generate(args, memory_profiler=None):
             t5_cpu=args.t5_cpu,
             memory_profiler=memory_profiler,
         )
+        if memory_profiler:
+            duration = time.time() - start_time
+            memory_profiler.log_event('Model Loaded', {'duration': duration, 'timestamp': time.time()})
 
         src_video, src_mask, src_ref_images = wan_vace.prepare_source(
             [args.src_video], [args.src_mask], [
@@ -675,8 +722,8 @@ def generate(args, memory_profiler=None):
 
         logging.info(f"Generating video...")
         if memory_profiler:
-            base_memory = torch.cuda.memory_allocated()
-            memory_profiler.log_event('before_forward_pass', {'base_memory': base_memory, 'model_name': 'vace'})
+            memory_profiler.log_event('generate_start', {'timestamp': time.time()})
+        gen_start_time = time.time()
         video = wan_vace.generate(
             args.prompt,
             src_video,
@@ -691,7 +738,9 @@ def generate(args, memory_profiler=None):
             seed=args.base_seed,
             offload_model=args.offload_model)
         if memory_profiler:
-            memory_profiler.log_event('after_forward_pass', {'base_memory': base_memory, 'model_name': 'vace'})
+            memory_profiler.log_event('generate_end', {'timestamp': time.time()})
+            gen_duration = time.time() - gen_start_time
+            memory_profiler.log_event('Total Generation', {'duration': gen_duration, 'timestamp': time.time()})
     else:
         raise ValueError(f"Unkown task type: {args.task}")
 
@@ -743,6 +792,9 @@ if __name__ == '__main__':
         if 'model_config' in config:
             for key, value in config['model_config'].items():
                 setattr(args, key, value)
+        if 'generation' in config:
+            for key, value in config['generation'].items():
+                setattr(args, key, value)
         if 'optimization' in config:
             for key, value in config['optimization'].items():
                 setattr(args, key, value)
@@ -762,10 +814,11 @@ if __name__ == '__main__':
 
         memory_profiler = MemoryProfiler(config['name'], logger, config['logging']['trace_path'])
         memory_profiler.start_profiling()
-        memory_profiler.log_event('init')
+        memory_profiler.log_event('init', {'timestamp': time.time()})
 
+    _validate_args(args)
     video = generate(args, memory_profiler=memory_profiler)
 
     if memory_profiler:
-        memory_profiler.log_event('inference_end')
+        memory_profiler.log_event('inference_end', {'timestamp': time.time()})
         memory_profiler.stop_profiling()
