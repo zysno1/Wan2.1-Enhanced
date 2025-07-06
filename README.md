@@ -277,16 +277,19 @@ def generate_report(log_data: Dict[str, float], log_path: str) -> str:
 
    ```bash
    # 激活虚拟环境
-   source /workspace/env/bin/activate
+   source /workspace/venv/bin/activate
 
    # 执行测试脚本
+   # （请注意：run_memory_tests.sh 脚本需要您根据要运行的配置进行相应修改）
    bash tests/scripts/run_memory_tests.sh
    ```
 
-### 2. 数据分析
+2. **数据分析**
+
+   使用 `analyzer.py` 脚本分析生成的日志文件。
 
    ```bash
-   python tests/analyzer.py profiler_logs/baseline/memory_events.json
+   python tests/scripts/analyze_memory.py profiler_logs/baseline/memory_events.json
    ```
 
 ## 6. 日志格式和目录管理
