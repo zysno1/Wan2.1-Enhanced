@@ -64,15 +64,15 @@ bash tests/scripts/run_memory_tests.sh tests/configs/baseline.yaml
 
 **视频1 - 174111**
 
-![视频预览1](https://github.com/zysno1/Wan2.1-Enhanced/assets/t2v-1.3B_832*480_1_1_Two_anthropomorphic_cats_in_comfy_boxing_gear_and__20250706_174111.mp4)
+![视频预览1](https://github.com/zysno1/Wan2.1-Enhanced/blob/main/t2v-1.3B_832*480_1_1_Two_anthropomorphic_cats_in_comfy_boxing_gear_and__20250706_174111.mp4)
 
 **视频2 - 174858**
 
-![视频预览2](https://github.com/zysno1/Wan2.1-Enhanced/assets/t2v-1.3B_832*480_1_1_Two_anthropomorphic_cats_in_comfy_boxing_gear_and__20250706_174858.mp4)
+![视频预览2](https://github.com/zysno1/Wan2.1-Enhanced/blob/main/t2v-1.3B_832*480_1_1_Two_anthropomorphic_cats_in_comfy_boxing_gear_and__20250706_174858.mp4)
 
 **视频3 - 175503**
 
-![视频预览3](https://github.com/zysno1/Wan2.1-Enhanced/assets/t2v-1.3B_832*480_1_1_Two_anthropomorphic_cats_in_comfy_boxing_gear_and__20250706_175503.mp4)
+![视频预览3](https://github.com/zysno1/Wan2.1-Enhanced/blob/main/t2v-1.3B_832*480_1_1_Two_anthropomorphic_cats_in_comfy_boxing_gear_and__20250706_175503.mp4)
 
 *展示了两只拟人化猫咪穿着舒适的拳击装备在聚光灯舞台上激烈对战的场景，动作流畅自然，细节丰富*
 
