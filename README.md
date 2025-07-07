@@ -195,7 +195,7 @@ bash tests/scripts/run_memory_tests.sh tests/configs/cpu_offload.yaml
    - VAE解码：9.08 秒
  - **详细显存分布**：
    - DiT模型：5413.04 MB (基础) + 3608.07 MB (激活)
-   - T5模型：0 MB (基础) + 5920.00 MB (激活) + 5920.00 MB (KV缓存)
+   - T5模型：0 MB (基础) + 0 MB (激活) + 0 MB (KV缓存)
    - VAE模型：505.75 MB (基础) + 370.20 MB (激活)
    - PyTorch/CUDA运行时开销：2472.56 MB
  
