@@ -98,27 +98,34 @@ bash tests/scripts/run_memory_tests.sh tests/configs/baseline.yaml
 
 **配置 (`cpu_offload.yaml`)**
 
-```yaml
-name: "cpu_offload"
-description: "Optimized configuration with CPU model offload"
+```yamlname: "CPU-offload"
+description: "T5 Model offload to CPU"
 
 model_config:
   task: "t2v-1.3B"
   size: "832*480"
-  ckpt_dir: "/path/to/your/checkpoints" # 请替换为您的模型路径
+  load_strategy: "block"     # 模型加载策略：full/block
+  offload_model: true       # 卸载到CPU
+  precision: "fp16"         # 计算精度：fp32/fp16/bf16
+  device: "cuda"           # 运行设备
+  ckpt_dir: /workspace/Wan2.1-Enhanced/Wan2.1-T2V-1.3B
 
 optimization:
-  offload_model: true
-  attention_slicing: false
+  attention_slicing: false   # 注意力切片
+  gradient_checkpointing: false
+  batch_size: 1
+  micro_batch_size: 1
+  parallel_degree: 1       # 模型并行度
 
 logging:
   profile_memory: true
-  trace_path: "profiler_logs/cpu_offload"
+  log_interval: 10         # 记录间隔（步数）
+  trace_path: "profiler_logs"
 ```
 
 **测试提示词**
 ```
-夕阳西下，金色的海浪轻拍着沙滩，一对恋人手牵手在海边漫步，海鸥在天空中自由翱翔，远处的帆船在海平线上缓缓移动，浪漫唯美的画面
+Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage.
 ```
 
 **执行命令**
