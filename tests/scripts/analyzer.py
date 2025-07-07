@@ -200,10 +200,11 @@ def parse_events(events):
     pure_runtime_overhead = total_peak_memory - total_model_memory
     
     # Store pure runtime memory in a special 'Runtime' component
-    if pure_runtime_overhead > 0:
+    # Only show runtime overhead if it's positive and reasonable
+    if pure_runtime_overhead > 0 and pure_runtime_overhead < total_peak_memory * 0.5:
         memory_data['Runtime']['runtime'] = pure_runtime_overhead
-    elif total_peak_memory > 0:  # Fallback to total peak if calculation results in negative
-        memory_data['Runtime']['runtime'] = total_peak_memory
+    # If calculation results in negative or unreasonably large value, don't show runtime overhead
+    # This indicates that our model component accounting is incomplete or incorrect
     
     # Calculate durations with more comprehensive time tracking
     if 't5_load_start' in time_data and 't5_load_end' in time_data:

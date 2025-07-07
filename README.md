@@ -4,21 +4,57 @@
 
 ## 目录
 
-1. [测试场景和报告](#1-测试场景和报告)
-2. [项目背景](#2-项目背景)
-3. [测试目标](#3-测试目标)
-4. [技术方案](#4-技术方案)
-5. [工具设计](#5-工具设计)
-6. [环境配置](#6-环境配置)
-7. [使用方法](#7-使用方法)
-8. [参数说明](#8-参数说明)
-9. [模型架构与默认配置](#9-模型架构与默认配置)
+1. [项目背景](#1-项目背景)
+2. [测试目标](#2-测试目标)
+3. [使用方法](#3-使用方法)
+4. [测试场景和报告](#4-测试场景和报告)
+5. [技术方案](#5-技术方案)
+6. [工具设计](#6-工具设计)
+7. [参数说明](#7-参数说明)
+8. [模型架构与默认配置](#8-模型架构与默认配置)
 
-## 1. 测试场景和报告
+## 1. 项目背景
 
-### 1.1 场景一：1.3B模型生成5秒480P视频，L40S单卡
+Wan2.1 是一个视频生成项目，在生成过程中涉及多个大型模型的加载和推理，显存使用是一个关键的性能指标。为了优化显存使用，需要对不同推理配置下的显存消耗进行系统的测试和分析。
 
-#### 1.1.1 第一部分：测试基线
+本项目的工作目录为 `/workspace/Wan2.1-Enhanced`，所有的代码、工具、文档和生成的日志都应存放在此目录下。
+
+## 2. 测试目标
+
+- 精确测量不同推理配置下的显存使用情况
+- 识别单次运行中显存使用的瓶颈
+- 为后续优化提供数据支持和方向指导
+
+
+## 3. 使用方法
+
+### 3.1 测试执行
+
+1. **执行测试**
+
+   所有测试都应在指定的虚拟环境下执行，以确保依赖隔离和环境一致性。
+
+   ```bash
+   # 激活虚拟环境
+   source /workspace/venv/bin/activate
+
+   # 执行测试脚本
+   # （请注意：run_memory_tests.sh 脚本需要您根据要运行的配置进行相应修改）
+   bash tests/scripts/run_memory_tests.sh
+   ```
+
+2. **数据分析**
+
+   测试脚本执行完成后，会自动调用 `tests/scripts/analyze.py` 来分析日志并生成增强的内存分析报告。
+
+   报告将以 `enhanced_memory_analysis_report_YYYYMMDD_HHMMSS.md` 的格式保存在项目根目录下。
+
+
+## 4. 测试场景和报告
+
+### 4.1 场景一：1.3B模型生成5秒480P视频，L40S单卡
+
+#### 4.1.1 第一部分：测试基线
 
 **配置 (`baseline.yaml`)**
 
@@ -69,7 +105,6 @@ bash tests/scripts/run_memory_tests.sh tests/configs/baseline.yaml
    - T5编码：0.88 秒  
    - DiT前向推理：223.94 秒
    - VAE解码：9.10 秒
- - **显存分析报告**：`enhanced_memory_analysis_report_20250706_232012.md`
  - **详细显存分布**：
    - DiT模型：5439.81 MB (基础) + 3226.79 MB (激活)
    - T5模型：10836.48 MB (基础) + 17.00 MB (激活) + 17.00 MB (KV缓存)
@@ -86,21 +121,14 @@ bash tests/scripts/run_memory_tests.sh tests/configs/baseline.yaml
 
 ![视频预览1](https://github.com/zysno1/Wan2.1-Enhanced/blob/main/t2v-1.3B_832*480_1_1_Two_anthropomorphic_cats_in_comfy_boxing_gear_and__20250706_174111.mp4)
 
-**视频2 - 174858**
-
-![视频预览2](https://github.com/zysno1/Wan2.1-Enhanced/blob/main/t2v-1.3B_832*480_1_1_Two_anthropomorphic_cats_in_comfy_boxing_gear_and__20250706_174858.mp4)
-
-**视频3 - 175503**
-
-![视频预览3](https://github.com/zysno1/Wan2.1-Enhanced/blob/main/t2v-1.3B_832*480_1_1_Two_anthropomorphic_cats_in_comfy_boxing_gear_and__20250706_175503.mp4)
-
 *展示了两只拟人化猫咪穿着舒适的拳击装备在聚光灯舞台上激烈对战的场景，动作流畅自然，细节丰富*
 
-#### 1.1.2 第二部分：CPU模型卸载
+#### 4.1.2 第二部分：CPU模型卸载
 
 **配置 (`cpu_offload.yaml`)**
 
-```yamlname: "CPU-offload"
+```yaml
+name: "CPU-offload"
 description: "T5 Model offload to CPU"
 
 model_config:
@@ -137,45 +165,53 @@ bash tests/scripts/run_memory_tests.sh tests/configs/cpu_offload.yaml
 
 **测试结果**
  
- - 显存峰值：预计 25-30 GB（通过CPU卸载优化）
- - 生成时间：约 150-180 秒（由于CPU-GPU数据传输开销）
- - 显存分析报告：`cpu_offload_report.md`
+ - **显存峰值**：8.20 GB（总峰值显存）
+ - **模型组件显存**：5.92 GB (基础显存) + 9.90 GB (激活显存) + 5.92 GB (KV缓存)
+ - **纯运行时开销**：2.47 GB
+ - **生成时间**：633.89 秒
+   - 模型加载：142.58 秒
+   - T5编码：397.61 秒
+   - DiT前向推理：224.19 秒
+   - VAE解码：9.08 秒
+ - **详细显存分布**：
+   - DiT模型：5413.04 MB (基础) + 3608.07 MB (激活)
+   - T5模型：0 MB (基础) + 5920.00 MB (激活) + 5920.00 MB (KV缓存)
+   - VAE模型：505.75 MB (基础) + 370.20 MB (激活)
+   - PyTorch/CUDA运行时开销：2472.56 MB
  
- **生成的视频文件**
- 
- - 输出视频：`outputs/cpu_offload_video.mp4`
- - 视频规格：832x480, 5秒, 16fps
- - 视频预览：
-   
-   ![CPU卸载优化视频](outputs/cpu_offload_video.gif)
-   
-   *展示了海边浪漫场景，虽然生成时间稍长，但显存使用显著降低，视频质量保持良好*
- 
- #### 1.1.3 第三部分：注意力切片
+ #### 4.1.3 第三部分：注意力切片
 
 **配置 (`attention_slicing.yaml`)**
 
 ```yaml
 name: "attention_slicing"
-description: "Configuration with attention slicing enabled"
+description: "Attention slicing is an optimization technique that reduces the memory footprint of AI inference by breaking down the computationally intensive attention mechanism into sequential, smaller chunks, enabling models to run on hardware with limited VRAM at the cost of slightly slower performance."
 
 model_config:
   task: "t2v-1.3B"
   size: "832*480"
-  ckpt_dir: "/path/to/your/checkpoints" # 请替换为您的模型路径
+  load_strategy: "block"     # 模型加载策略：full/block
+  offload_model: true       # 卸载到CPU
+  precision: "fp16"         # 计算精度：fp32/fp16/bf16
+  device: "cuda"           # 运行设备
+  ckpt_dir: /workspace/Wan2.1-Enhanced/Wan2.1-T2V-1.3B
 
 optimization:
-  offload_model: false
-  attention_slicing: true
+  attention_slicing: true   # 注意力切片
+  gradient_checkpointing: false
+  batch_size: 1
+  micro_batch_size: 1
+  parallel_degree: 1       # 模型并行度
 
 logging:
   profile_memory: true
-  trace_path: "profiler_logs/attention_slicing"
-```
+  log_interval: 10         # 记录间隔（步数）
+  trace_path: "profiler_logs"
+  ```
 
 **测试提示词**
 ```
-繁华的都市夜景，霓虹灯闪烁，车流如织，高楼大厦灯火通明，街道上行人匆匆，现代都市的活力与节奏感，4K超高清画质
+Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage.
 ```
 
 **执行命令**
@@ -185,9 +221,9 @@ bash tests/scripts/run_memory_tests.sh tests/configs/attention_slicing.yaml
 
 **测试结果**
  
- - 显存峰值：预计 30-35 GB（通过注意力切片优化）
- - 生成时间：约 130-140 秒（轻微计算开销增加）
- - 显存分析报告：`attention_slicing_report.md`
+ - 显存峰值：待测试（CPU卸载+注意力切片组合优化）
+ - 生成时间：待测试（预计比单纯CPU卸载略长）
+ - 显存分析报告：待生成
  
  **生成的视频文件**
  
@@ -199,155 +235,25 @@ bash tests/scripts/run_memory_tests.sh tests/configs/attention_slicing.yaml
    
    *展示了都市夜景的繁华与动感，注意力切片技术在保持视频质量的同时有效降低了显存峰值*
  
- ### 1.2 场景二：1.3B模型生成10秒720P视频，A100单卡
  
- #### 1.2.1 第一部分：测试基线
  
- **配置 (`baseline_720p.yaml`)**
+ ### 4.2 场景二：多卡并行测试，2x A100
  
- ```yaml
- name: "baseline_720p"
- description: "Baseline configuration for 720P video generation"
- 
- model_config:
-   task: "t2v-1.3B"
-   size: "1280*720"
-   ckpt_dir: "/path/to/your/checkpoints"
- 
- optimization:
-   offload_model: false
-   attention_slicing: false
- 
- logging:
-   profile_memory: true
-   trace_path: "profiler_logs/baseline_720p"
- ```
- 
- **执行命令**
-  ```bash
-  bash tests/scripts/run_memory_tests.sh tests/configs/baseline_720p.yaml
-  ```
- 
- **测试结果**
- 
- - 显存峰值：预计 55-65 GB
- - 生成时间：约 240-300 秒
- - 显存分析报告：`baseline_720p_report.md`
- 
- **生成的视频文件**
- 
- - 输出视频：`outputs/baseline_720p_video.mp4`
- - 视频规格：1280x720, 10秒, 16fps
- 
- #### 1.2.2 第二部分：组合优化策略
- 
- **配置 (`combined_optimization.yaml`)**
- 
- ```yaml
- name: "combined_optimization"
- description: "Combined optimization with CPU offload and attention slicing"
- 
- model_config:
-   task: "t2v-1.3B"
-   size: "1280*720"
-   ckpt_dir: "/path/to/your/checkpoints"
- 
- optimization:
-   offload_model: true
-   attention_slicing: true
- 
- logging:
-   profile_memory: true
-   trace_path: "profiler_logs/combined_optimization"
- ```
- 
- **执行命令**
-  ```bash
-  bash tests/scripts/run_memory_tests.sh tests/configs/combined_optimization.yaml
-  ```
- 
- **测试结果**
- 
- - 显存峰值：预计 35-45 GB（显著优化）
- - 生成时间：约 300-360 秒
- - 显存分析报告：`combined_optimization_report.md`
- 
- **生成的视频文件**
- 
- - 输出视频：`outputs/combined_optimization_video.mp4`
- - 视频规格：1280x720, 10秒, 16fps
- 
- ### 1.3 场景三：多卡并行测试，2x A100
- 
- #### 1.3.1 FSDP并行策略
- 
- **配置 (`fsdp_parallel.yaml`)**
- 
- ```yaml
- name: "fsdp_parallel"
- description: "FSDP parallel configuration for multi-GPU setup"
- 
- model_config:
-   task: "t2v-1.3B"
-   size: "1280*720"
-   ckpt_dir: "/path/to/your/checkpoints"
- 
- optimization:
-   offload_model: false
-   attention_slicing: false
-   t5_fsdp: true
-   dit_fsdp: true
- 
- parallel:
-   ulysses_size: 2
-   ring_size: 1
- 
- logging:
-   profile_memory: true
-   trace_path: "profiler_logs/fsdp_parallel"
- ```
- 
- **执行命令**
-  ```bash
-  bash tests/scripts/run_memory_tests.sh tests/configs/fsdp_parallel.yaml
-  ```
- 
- **测试结果**
- 
- - 每卡显存峰值：预计 25-35 GB
- - 总显存使用：50-70 GB（分布在2张卡上）
- - 生成时间：约 180-220 秒（并行加速）
- - 显存分析报告：`fsdp_parallel_report.md`
- 
- **生成的视频文件**
- 
- - 输出视频：`outputs/fsdp_parallel_video.mp4`
- - 视频规格：1280x720, 10秒, 16fps
+#### 4.2.1 FSDP并行策略
 
-## 2. 项目背景
 
-Wan2.1 是一个视频生成项目，在生成过程中涉及多个大型模型的加载和推理，显存使用是一个关键的性能指标。为了优化显存使用，需要对不同推理配置下的显存消耗进行系统的测试和分析。
+## 5. 技术方案
 
-本项目的工作目录为 `/workspace/Wan2.1-Enhanced`，所有的代码、工具、文档和生成的日志都应存放在此目录下。
+### 5.1 显存消耗采集与性能分析技术方案
 
-## 3. 测试目标
-
-- 精确测量不同推理配置下的显存使用情况
-- 识别单次运行中显存使用的瓶颈
-- 为后续优化提供数据支持和方向指导
-
-## 4. 技术方案
-
-### 3.1 显存消耗采集与性能分析技术方案
-
-#### 3.1.1 显存监控架构设计
+#### 5.1.1 显存监控架构设计
 
 为了精确测量和分析显存使用情况，我们设计了一套完整的显存监控系统，将显存消耗拆分为 **基础显存** 和 **激活显存** 两部分：
 
 - **基础显存**：模型加载后，在推理前占用的显存，主要包括模型权重、优化器状态等
 - **激活显存**：在模型前向传播过程中，因计算产生的中间变量（激活值）所占用的显存
 
-#### 3.1.2 技术实现方案
+#### 5.1.2 技术实现方案
 
 **1. 核心监控组件**
 
@@ -443,67 +349,69 @@ def start_profiling(self):
 def stop_profiling(self):
     if self.profiler:
         self.profiler.stop()
-    if self.events:
-        log_file_path = os.path.join(self.output_dir, "memory_events.json")
-        with open(log_file_path, 'w') as f:
-            json.dump(self.events, f, indent=4)
+    # 显存事件数据会自动保存到指定目录
 ```
 
-### 3.2 推理配置方案
+### 5.2 推理配置方案
 
-#### 3.2.1 配置文件结构
+#### 5.2.1 配置文件结构
 
-#### 3.2.2 测试配置矩阵
+推理配置文件采用YAML格式，包含以下主要部分：
+
+```yaml
+name: "配置名称"  # 配置的唯一标识符
+description: "配置描述"  # 对该配置的简要说明
+
+model_config:  # 模型相关配置
+  task: "t2v-1.3B"  # 任务类型
+  size: "832*480"  # 输出分辨率
+  load_strategy: "block"  # 模型加载策略
+  offload_model: true/false  # 是否启用CPU卸载
+  precision: "fp16"  # 计算精度
+  device: "cuda"  # 运行设备
+  ckpt_dir: "/path/to/model"  # 模型权重路径
+
+optimization:  # 优化策略配置
+  attention_slicing: true/false  # 是否启用注意力切片
+  gradient_checkpointing: true/false  # 是否启用梯度检查点
+  batch_size: 1  # 批处理大小
+  micro_batch_size: 1  # 微批处理大小
+  parallel_degree: 1  # 模型并行度
+
+logging:  # 日志和分析配置
+  profile_memory: true  # 是否记录显存使用
+  log_interval: 10  # 日志记录间隔
+  trace_path: "profiler_logs"  # 分析日志保存路径
+```
+
+#### 5.2.2 测试配置矩阵
 
 | 配置名称 | 加载策略 | 精度 | 优化特性 | 并行设置 |
 |---|---|---|---|---|
 | baseline | block | fp16 | 无 | 单卡 |
+| cpu_offload | block | fp16 | CPU卸载 | 单卡 |
+| attention_slicing | block | fp16 | 注意力切片 | 单卡 |
+| combined_opt | block | fp16 | CPU卸载+注意力切片 | 单卡 |
+| fsdp | block | fp16 | FSDP并行 | 多卡 |
 
-## 5. 工具设计
+## 6. 工具设计
 
-### 4.1 数据收集器
+### 6.1 数据收集器
 
-```python
-class MemoryProfiler:
-    def __init__(self, config_name, output_dir):
-        self.config_name = config_name
-        self.output_dir = output_dir
-        self.memory_tracker = MemoryTracker(output_dir)
-        self.events = []
+本项目使用5.1.2节中描述的`MemoryTracker`和`MemoryProfiler`类来收集显存使用数据。这些工具在模型加载和推理的关键节点插入监控点，记录显存使用情况，并将数据保存为JSON格式以便后续分析。
 
-    def start_profiling(self):
-        self.profiler = setup_profiler(self.output_dir)
-        self.profiler.start()
+主要功能包括：
 
-    def log_event(self, event_name, metadata=None):
-        # 如果提供了 base_memory，则计算增量显存
-        # 否则，记录当前的峰值显存
-        if metadata and 'base_memory' in metadata:
-            incremental_memory = torch.cuda.memory_allocated() - metadata['base_memory']
-            memory_log = f"{event_name}: incremental_memory={incremental_memory / (1024**2):.2f} MB"
-        else:
-            peak_memory = torch.cuda.max_memory_allocated()
-            memory_log = f"{event_name}: peak_memory={peak_memory / (1024**2):.2f} MB"
-
-        event = {
-            "name": event_name,
-            "timestamp": time.time(),
-            "memory_log": memory_log,
-            "metadata": metadata
-        }
-        self.events.append(event)
-
-    def stop_profiling(self):
-        self.profiler.stop()
-        self.memory_tracker.save_logs()
-        self.save_events()
+- 记录模型加载过程中各组件的显存增量
+- 监控推理过程中的显存峰值
+- 区分基础显存和激活显存
+- 集成PyTorch Profiler提供更详细的性能分析
+- 自动保存显存事件数据
 ```
 
-#### 3.1.3 显存分析工具
+#### 5.1.3 显存分析工具
 
-**1. 自动化分析脚本**
-
-我们提供了专门的分析工具 `analyze_memory.py` 来处理收集到的显存数据：
+我们提供了专门的分析工具 `analyze_memory.py` 来处理收集到的显存数据，该工具可以解析JSON格式的显存事件记录，提取关键指标，并生成可视化报告：
 
 ```python
 def analyze_log_file(file_path: str) -> Dict[str, float]:
@@ -522,92 +430,17 @@ def analyze_log_file(file_path: str) -> Dict[str, float]:
     return memory_data
 ```
 
-**2. 显存分类统计**
+分析工具的主要功能包括：
 
-分析工具自动计算以下关键指标：
+- 解析显存事件日志文件
+- 计算各组件的显存占用
+- 区分基础显存和激活显存
+- 生成可视化图表和Markdown格式报告
+- 提供优化建议
 
-- **基础显存分析**：
-  - T5文本编码器增量显存 (`t5_loaded`)
-  - VAE模型增量显存 (`vae_loaded`)
-  - DiT模型增量显存 (`dit_loaded`)
-  - 模型总基础显存 (`model_base_memory`)
+### 6.2 日志格式和目录管理
 
-- **激活显存分析**：
-  - 前向传播峰值显存 (`forward_pass`)
-  - 激活显存消耗 (`activation_memory`)
-  - 总峰值显存 (`peak_memory`)
-
-- **阶段性分析**：
-  - 初始化显存基线 (`init`)
-  - 模型加载完成显存 (`model_loaded`)
-  - 推理过程显存变化
-  - 显存碎片率和波动情况
-
-**3. 报告生成**
-
-工具自动生成Markdown格式的分析报告：
-
-```python
-def generate_report(log_data: Dict[str, float], log_path: str) -> str:
-    """生成Markdown格式的显存分析报告"""
-    # 计算派生指标
-    init_mem = log_data.get("init", 0)
-    model_load_mem = log_data.get("model_loaded", 0)
-    forward_pass_mem = log_data.get("forward_pass", 0)
-    
-    base_model_mem = model_load_mem - init_mem
-    activation_mem = forward_pass_mem - model_load_mem
-    
-    # 生成详细报告表格
-    report = f"# 显存分析报告\n\n"
-    report += f"| 事件 (Event) | 峰值显存 (MB) |\n"
-    report += f"|:---|:---:|\n"
-    
-    return report
-```
-
-
-
-## 6. 环境配置
-
-### 6.1 环境准备
-
-1. 确保测试环境
-   - 清理 GPU 进程
-   - 预热 GPU
-   - 检查 CUDA 版本
-
-2. 工具准备
-   - 安装依赖
-   - 配置日志目录
-   - 准备测试数据
-
-## 7. 使用方法
-
-### 7.1 测试执行
-
-1. **执行测试**
-
-   所有测试都应在指定的虚拟环境下执行，以确保依赖隔离和环境一致性。
-
-   ```bash
-   # 激活虚拟环境
-   source /workspace/venv/bin/activate
-
-   # 执行测试脚本
-   # （请注意：run_memory_tests.sh 脚本需要您根据要运行的配置进行相应修改）
-   bash tests/scripts/run_memory_tests.sh
-   ```
-
-2. **数据分析**
-
-   测试脚本执行完成后，会自动调用 `tests/scripts/analyze_memory.py` 来分析日志并生成增强的内存分析报告。
-
-   报告将以 `enhanced_memory_analysis_report_YYYYMMDD_HHMMSS.md` 的格式保存在项目根目录下。
-
-### 7.2 日志格式和目录管理
-
-#### 7.2.1 目录结构规划
+#### 6.2.1 目录结构规划
 
 为了系统地管理测试过程中产生的各种文件，我们定义以下目录结构：
 
@@ -626,7 +459,7 @@ Wan2.1-Enhanced/
 │   │   ├── memory_events.json
 ```
 
-## 8. 参数说明
+## 7. 参数说明
 
 以下是 `generate.py` 脚本中使用的主要超参数的详细说明，这些参数控制着视频生成的各个方面。
 
@@ -702,11 +535,11 @@ Wan2.1-Enhanced/
   - 默认值: `block`。
   - 说明: `block` 策略可能指的是一次性将整个模型加载到设备中。
 
-## 9. 模型架构与默认配置
+## 8. 模型架构与默认配置
 
 本节提供 `WanT2V-1.3B` 模型的核心架构参数和默认配置，这些信息派生自模型的配置文件，为高级用户和开发者提供参考。
 
-### 核心架构参数
+### 8.1 核心架构参数
 
 - **文本编码器 (T5)**:
   - **模型类型**: `umt5_xxl` - 指定了使用的 T5 模型的具体变体，`xxl` 表示这是一个超大规模版本，具有更多的参数和更强的语言理解能力。
@@ -731,7 +564,7 @@ Wan2.1-Enhanced/
   - **Cross Attention Normalization**: `True` - 是否对交叉注意力模块的输出进行归一化。
   - **Epsilon (eps)**: `1e-06` - 在归一化操作（如 LayerNorm）中为了防止除以零而添加的一个小常数。
 
-### 默认配置
+### 8.2 默认配置
 
 - **模型参数精度**: `bfloat16` - 整个推理流程中默认使用的浮点数精度，以平衡性能和显存消耗。
 - **训练总步数**: `1000` - 模型预训练时所经历的总步数。这是一个参考信息，表明了模型的训练程度。
