@@ -361,48 +361,6 @@ def stop_profiling(self):
     # 显存事件数据会自动保存到指定目录
 ```
 
-### 5.2 推理配置方案
-
-#### 5.2.1 配置文件结构
-
-推理配置文件采用YAML格式，包含以下主要部分：
-
-```yaml
-name: "配置名称"  # 配置的唯一标识符
-description: "配置描述"  # 对该配置的简要说明
-
-model_config:  # 模型相关配置
-  task: "t2v-1.3B"  # 任务类型
-  size: "832*480"  # 输出分辨率
-  load_strategy: "block"  # 模型加载策略
-  offload_model: true/false  # 是否启用CPU卸载
-  precision: "fp16"  # 计算精度
-  device: "cuda"  # 运行设备
-  ckpt_dir: "/path/to/model"  # 模型权重路径
-
-optimization:  # 优化策略配置
-  attention_slicing: true/false  # 是否启用注意力切片
-  gradient_checkpointing: true/false  # 是否启用梯度检查点
-  batch_size: 1  # 批处理大小
-  micro_batch_size: 1  # 微批处理大小
-  parallel_degree: 1  # 模型并行度
-
-logging:  # 日志和分析配置
-  profile_memory: true  # 是否记录显存使用
-  log_interval: 10  # 日志记录间隔
-  trace_path: "profiler_logs"  # 分析日志保存路径
-```
-
-#### 5.2.2 测试配置矩阵
-
-| 配置名称 | 加载策略 | 精度 | 优化特性 | 并行设置 |
-|---|---|---|---|---|
-| baseline | block | fp16 | 无 | 单卡 |
-| cpu_offload | block | fp16 | CPU卸载 | 单卡 |
-| attention_slicing | block | fp16 | 注意力切片 | 单卡 |
-| combined_opt | block | fp16 | CPU卸载+注意力切片 | 单卡 |
-| fsdp | block | fp16 | FSDP并行 | 多卡 |
-
 ## 6. 工具设计
 
 ### 6.1 数据收集器
