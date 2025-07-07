@@ -52,8 +52,8 @@ def parse_events(events):
         if 'timestamp' in event:
             time_data[event_name] = event['timestamp']
 
-        if 'duration' in event:
-            durations[event_name] = event['duration']
+        # Skip adding raw event durations to avoid duplicates in report
+        # Duration calculations are handled explicitly below
 
         # Handle events without model_name but with memory info
         if not model_name:
@@ -206,6 +206,11 @@ def parse_events(events):
         memory_data['Runtime']['runtime'] = total_peak_memory
     
     # Calculate durations with more comprehensive time tracking
+    if 't5_load_start' in time_data and 't5_load_end' in time_data:
+        durations['T5 Model Loading'] = time_data['t5_load_end'] - time_data['t5_load_start']
+    elif 'init' in time_data and 't5_loaded' in time_data:
+        # Fallback: calculate T5 loading time from init to t5_loaded
+        durations['T5 Model Loading'] = time_data['t5_loaded'] - time_data['init']
     if 't5_encode_start' in time_data and 't5_encode_end' in time_data:
         durations['T5 Encode'] = time_data['t5_encode_end'] - time_data['t5_encode_start']
     if 'dit_forward_start' in time_data and 'dit_forward_end' in time_data:
@@ -218,12 +223,12 @@ def parse_events(events):
     # Add model loading time - prefer 'Model Loaded' duration over calculated time
     if 'Model Loaded' in durations:
         # Use the duration from 'Model Loaded' event (this is the most accurate)
-        durations['Model Loading'] = durations['Model Loaded']
+        durations['All Models Loading'] = durations['Model Loaded']
         # Remove the 'Model Loaded' entry to avoid duplication
         del durations['Model Loaded']
     elif 'init' in time_data and 'generate_start' in time_data:
         # Fallback to calculated time if 'Model Loaded' duration is not available
-        durations['Model Loading'] = time_data['generate_start'] - time_data['init']
+        durations['All Models Loading'] = time_data['generate_start'] - time_data['init']
 
     return {'memory': memory_data, 'time': durations, 'total_peak_memory': total_peak_memory}
 
@@ -307,7 +312,7 @@ def generate_report(analysis_results, output_file):
                 f.write("|--------------------|--------------|\n")
                 
                 # Define the desired order of stages
-                stage_order = ["Model Loading", "T5 Encode", "DiT Forward", "VAE Decode", "Total Generation"]
+                stage_order = ["All Models Loading", "T5 Model Loading", "T5 Encode", "DiT Forward", "VAE Decode", "Total Generation"]
 
                 # Use a dictionary to store the data in the desired order
                 ordered_stages = {stage: None for stage in stage_order}

@@ -76,17 +76,43 @@ class WanT2V:
 
         if self.memory_profiler:
             base_memory = torch.cuda.memory_allocated()
+            # Record T5 model loading start time
+            t5_load_start_time = time.time()
+            self.memory_profiler.log_event('t5_load_start', {'timestamp': t5_load_start_time})
 
+        # Choose device for T5 model based on t5_cpu parameter
+        t5_device = 'cpu' if t5_cpu else self.device
+        
         self.text_encoder = T5EncoderModel(
             text_len=config.text_len,
             dtype=config.t5_dtype,
-            device=self.device,
+            device=t5_device,
             checkpoint_path=os.path.join(checkpoint_dir, config.t5_checkpoint),
             tokenizer_path=os.path.join(checkpoint_dir, config.t5_tokenizer),
             shard_fn=shard_fn if t5_fsdp else None)
         if self.memory_profiler:
-            self.memory_profiler.log_event('t5_loaded', {'base_memory': base_memory})
-            base_memory = torch.cuda.memory_allocated()
+            # Record T5 model loading end time and calculate duration
+            t5_load_end_time = time.time()
+            t5_load_duration = t5_load_end_time - t5_load_start_time
+            gpu_memory_after_t5 = torch.cuda.memory_allocated()
+            
+            if t5_cpu:
+                # T5 on CPU: no GPU memory used, set base_memory to current memory
+                self.memory_profiler.log_event('t5_load_end', {
+                    'timestamp': t5_load_end_time,
+                    'duration': t5_load_duration,
+                    'base_memory': base_memory
+                })
+                self.memory_profiler.log_event('t5_loaded', {'base_memory': 0, 'incremental_memory': 0})
+            else:
+                # T5 on GPU: use base_memory from before T5 loading for proper incremental calculation
+                self.memory_profiler.log_event('t5_load_end', {
+                    'timestamp': t5_load_end_time,
+                    'duration': t5_load_duration,
+                    'base_memory': base_memory
+                })
+                self.memory_profiler.log_event('t5_loaded', {'base_memory': base_memory})
+            base_memory = gpu_memory_after_t5
 
         self.vae_stride = config.vae_stride
         self.patch_size = config.patch_size
@@ -210,10 +236,20 @@ class WanT2V:
             if offload_model:
                 self.text_encoder.model.cpu()
         else:
-            context = self.text_encoder([input_prompt], torch.device('cpu'))
-            context_null = self.text_encoder([n_prompt], torch.device('cpu'))
+            # T5 CPU mode: model runs on CPU, no GPU memory usage for T5
+            if self.memory_profiler:
+                self.memory_profiler.log_event('t5_encode_start', {'timestamp': time.time()})
+            # Move T5 model to CPU for encoding
+            self.text_encoder.model.cpu()
+            context = self.text_encoder([input_prompt])
+            context_null = self.text_encoder([n_prompt])
+            # Move results back to GPU
             context = [t.to(self.device) for t in context]
             context_null = [t.to(self.device) for t in context_null]
+            if self.memory_profiler:
+                # In CPU mode, T5 uses 0 GPU memory
+                self.memory_profiler.log_event('t5_encode_end', {'timestamp': time.time(), 'base_memory': 0})
+                self.memory_profiler.log_event('kv_cache', metadata={'model_name': 'T5', 'base_memory': 0})
 
 
 

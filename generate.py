@@ -801,6 +801,15 @@ if __name__ == '__main__':
         if 'logging' in config:
             for key, value in config['logging'].items():
                 setattr(args, key, value)
+        
+        # Fix: Map offload_model to t5_cpu for proper T5 model offloading
+        if hasattr(args, 'offload_model'):
+            if args.offload_model:
+                args.t5_cpu = True
+                logging.info(f"CPU offload enabled: setting t5_cpu=True due to offload_model=True")
+            else:
+                args.t5_cpu = False
+                logging.info(f"GPU offload enabled: setting t5_cpu=False due to offload_model=False")
 
         # Setup logger
         log_path = os.path.join(config['logging']['trace_path'], 'memory_profile.log')

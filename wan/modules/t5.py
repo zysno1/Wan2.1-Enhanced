@@ -498,7 +498,8 @@ class T5EncoderModel:
         if shard_fn is not None:
             self.model = shard_fn(self.model, sync_module_states=False)
         else:
-            self.model.to(self.device)
+            # Use the device parameter passed during initialization, not self.device
+            self.model.to(device)
         # init tokenizer
         self.tokenizer = HuggingfaceTokenizer(
             name=tokenizer_path, seq_len=text_len, clean='whitespace')
@@ -506,8 +507,10 @@ class T5EncoderModel:
     def __call__(self, texts):
         ids, mask = self.tokenizer(
             texts, return_mask=True, add_special_tokens=True)
-        ids = ids.to(self.device)
-        mask = mask.to(self.device)
+        # Get the actual device of the model (might be different from self.device if moved to CPU)
+        model_device = next(self.model.parameters()).device
+        ids = ids.to(model_device)
+        mask = mask.to(model_device)
         seq_lens = mask.gt(0).sum(dim=1).long()
         context = self.model(ids, mask)
         return [u[:v] for u, v in zip(context, seq_lens)]

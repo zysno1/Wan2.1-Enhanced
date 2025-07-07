@@ -79,15 +79,46 @@ class WanVace(WanT2V):
         self.memory_profiler = memory_profiler
 
         shard_fn = partial(shard_model, device_id=device_id)
+        
+        if self.memory_profiler:
+            base_memory = torch.cuda.memory_allocated()
+            # Record T5 model loading start time
+            t5_load_start_time = time.time()
+            self.memory_profiler.log_event('t5_load_start', {'timestamp': t5_load_start_time})
+        
+        # Choose device for T5 model based on t5_cpu parameter
+        t5_device = torch.device('cpu') if t5_cpu else self.device
+        
         self.text_encoder = T5EncoderModel(
             text_len=config.text_len,
             dtype=config.t5_dtype,
-            device=torch.device('cpu'),
+            device=t5_device,
             checkpoint_path=os.path.join(checkpoint_dir, config.t5_checkpoint),
             tokenizer_path=os.path.join(checkpoint_dir, config.t5_tokenizer),
             shard_fn=shard_fn if t5_fsdp else None)
         if self.memory_profiler:
-            self.memory_profiler.log_event('t5_loaded', {'base_memory': torch.cuda.memory_allocated()})
+            # Record T5 model loading end time and calculate duration
+            t5_load_end_time = time.time()
+            t5_load_duration = t5_load_end_time - t5_load_start_time
+            gpu_memory_after_t5 = torch.cuda.memory_allocated()
+            
+            if t5_cpu:
+                # T5 on CPU: no GPU memory used, set base_memory to current memory
+                self.memory_profiler.log_event('t5_load_end', {
+                    'timestamp': t5_load_end_time,
+                    'duration': t5_load_duration,
+                    'base_memory': base_memory
+                })
+                self.memory_profiler.log_event('t5_loaded', {'base_memory': 0, 'incremental_memory': 0})
+            else:
+                # T5 on GPU: use base_memory from before T5 loading for proper incremental calculation
+                self.memory_profiler.log_event('t5_load_end', {
+                    'timestamp': t5_load_end_time,
+                    'duration': t5_load_duration,
+                    'base_memory': base_memory
+                })
+                self.memory_profiler.log_event('t5_loaded', {'base_memory': base_memory})
+            base_memory = gpu_memory_after_t5
 
         self.vae_stride = config.vae_stride
         self.patch_size = config.patch_size
@@ -95,7 +126,8 @@ class WanVace(WanT2V):
             vae_pth=os.path.join(checkpoint_dir, config.vae_checkpoint),
             device=self.device)
         if self.memory_profiler:
-            self.memory_profiler.log_event('vae_loaded', {'base_memory': torch.cuda.memory_allocated()})
+            self.memory_profiler.log_event('vae_loaded', {'base_memory': base_memory})
+            base_memory = torch.cuda.memory_allocated()
 
         logging.info(f"Creating VaceWanModel from {checkpoint_dir}")
         self.model = VaceWanModel.from_pretrained(checkpoint_dir)
@@ -130,7 +162,7 @@ class WanVace(WanT2V):
             self.model.to(self.device)
 
         if self.memory_profiler:
-            self.memory_profiler.log_event('dit_loaded', {'base_memory': torch.cuda.memory_allocated()})
+            self.memory_profiler.log_event('dit_loaded', {'base_memory': base_memory})
 
         self.sample_neg_prompt = config.sample_neg_prompt
 

@@ -5,10 +5,9 @@ model_config:
   task: "t2v-1.3B"
   size: "832*480"
   load_strategy: "block"     # 模型加载策略：full/block
-  offload_model: "false"    # 卸载到CPU 
+  offload_model: true       # 卸载到CPU
   precision: "fp16"         # 计算精度：fp32/fp16/bf16
   device: "cuda"           # 运行设备
-  offload: true          # CPU 卸载开关
   ckpt_dir: /workspace/Wan2.1-Enhanced/Wan2.1-T2V-1.3B
 
 optimization:
@@ -21,4 +20,4 @@ optimization:
 logging:
   profile_memory: true
   log_interval: 10         # 记录间隔（步数）
-  trace_path: "profiler_logs/baseline"
+  trace_path: "profiler_logs"
