@@ -117,9 +117,7 @@ bash tests/scripts/run_memory_tests.sh tests/configs/baseline.yaml
  - 视频规格：832x480, 5秒, 16fps
  - 实际生成视频预览：
 
-**视频1 - 174111**
-
-## Video Demos
+**Video Demos**
 
 <div align="center">
   <video src="https://github.com/user-attachments/assets/d801973a-d037-4917-a79e-430a55f60b36" width="70%" poster=""> </video>
