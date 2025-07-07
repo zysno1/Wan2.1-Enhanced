@@ -122,7 +122,7 @@ bash tests/scripts/run_memory_tests.sh tests/configs/baseline.yaml
 ## Video Demos
 
 <div align="center">
-  <video src="https://github.com/user-attachments/assets/4aca6063-60bf-4953-bfb7-e265053f49ef" width="70%" poster=""> </video>
+  <video src="https://github.com/zysno1/Wan2.1-Enhanced/blob/main/t2v-1.3B_832*480_1_1_Two_anthropomorphic_cats_in_comfy_boxing_gear_and__20250707_043803.mp4" width="70%" poster=""> </video>
 </div>
 
 *展示了两只拟人化猫咪穿着舒适的拳击装备在聚光灯舞台上激烈对战的场景，动作流畅自然，细节丰富*
