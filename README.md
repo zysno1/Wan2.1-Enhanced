@@ -245,17 +245,6 @@ bash tests/scripts/run_memory_tests.sh tests/configs/attention_slicing.yaml
  - 生成时间：待测试（预计比单纯CPU卸载略长）
  - 显存分析报告：待生成
  
- **生成的视频文件**
- 
- - 输出视频：`outputs/attention_slicing_video.mp4`
- - 视频规格：832x480, 5秒, 16fps
- - 视频预览：
-   
-   ![注意力切片优化视频](outputs/attention_slicing_video.gif)
-   
-   *展示了都市夜景的繁华与动感，注意力切片技术在保持视频质量的同时有效降低了显存峰值*
- 
- 
  
  ### 4.2 场景二：多卡并行测试，2x A100
  
