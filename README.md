@@ -199,13 +199,13 @@ bash tests/scripts/run_memory_tests.sh tests/configs/cpu_offload.yaml
    - VAE模型：505.75 MB (基础) + 370.20 MB (激活)
    - PyTorch/CUDA运行时开销：2472.56 MB
  
- #### 4.1.3 第三部分：注意力切片
+ #### 4.1.3 第三部分：模型量化
 
-**配置 (`attention_slicing.yaml`)**
+**配置 (`quantization.yaml`)**
 
 ```yaml
-name: "attention_slicing"
-description: "Attention slicing is an optimization technique that reduces the memory footprint of AI inference by breaking down the computationally intensive attention mechanism into sequential, smaller chunks, enabling models to run on hardware with limited VRAM at the cost of slightly slower performance."
+name: "Quantization"
+description: ""
 
 model_config:
   task: "t2v-1.3B"
@@ -217,17 +217,18 @@ model_config:
   ckpt_dir: /workspace/Wan2.1-Enhanced/Wan2.1-T2V-1.3B
 
 optimization:
-  attention_slicing: true   # 注意力切片
+  attention_slicing: false   # 注意力切片
   gradient_checkpointing: false
   batch_size: 1
   micro_batch_size: 1
   parallel_degree: 1       # 模型并行度
+  quantization: true #模型量化
 
 logging:
   profile_memory: true
   log_interval: 10         # 记录间隔（步数）
   trace_path: "profiler_logs"
-  ```
+    ```
 
 **测试提示词**
 ```
@@ -236,12 +237,12 @@ Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely 
 
 **执行命令**
 ```bash
-bash tests/scripts/run_memory_tests.sh tests/configs/attention_slicing.yaml
+bash tests/scripts/run_memory_tests.sh tests/configs/quantization.yaml
 ```
 
 **测试结果**
  
- - 显存峰值：待测试（CPU卸载+注意力切片组合优化）
+ - 显存峰值：待测试（CPU卸载+模型量化组合优化）
  - 生成时间：待测试（预计比单纯CPU卸载略长）
  - 显存分析报告：待生成
  
@@ -295,22 +296,9 @@ class MemoryProfiler:
 
 通过在关键节点记录基准显存，计算每个组件的增量显存消耗：
 
-```python
-def log_event(self, event_name, metadata=None):
-    torch.cuda.synchronize()  # 确保CUDA操作完成
-    if metadata and 'base_memory' in metadata:
-        base_memory = metadata['base_memory']
-        current_memory = torch.cuda.memory_allocated()
-        incremental_memory = current_memory - base_memory
-        self.events.append({"event": event_name, "incremental_memory": incremental_memory})
-    else:
-        peak_memory = torch.cuda.max_memory_allocated()
-        self.events.append({"event": event_name, "peak_memory": peak_memory})
-```
-
 **3. 模型加载监控实现**
 
-在模型加载的各个阶段插入监控点：
+在模型加载的各个阶段插入监控点的示例：
 
 ```python
 # T5文本编码器加载
@@ -329,37 +317,6 @@ self.model = WanModel.from_pretrained(checkpoint_dir)
 self.memory_profiler.log_event('dit_loaded', {'base_memory': base_memory})
 ```
 
-**4. PyTorch Profiler集成**
-
-集成PyTorch原生性能分析器，提供详细的计算图和显存分析：
-
-```python
-def start_profiling(self):
-    self.profiler = profile(
-        activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-        schedule=torch.profiler.schedule(
-            wait=1,
-            warmup=1,
-            active=3
-        ),
-        on_trace_ready=torch.profiler.tensorboard_trace_handler(self.output_dir),
-        record_shapes=True,
-        profile_memory=True,
-        with_stack=True
-    )
-    self.profiler.start()
-```
-
-**5. 数据持久化**
-
-所有显存事件自动保存为JSON格式，便于后续分析：
-
-```python
-def stop_profiling(self):
-    if self.profiler:
-        self.profiler.stop()
-    # 显存事件数据会自动保存到指定目录
-```
 
 ## 6. 工具设计
 
@@ -375,35 +332,6 @@ def stop_profiling(self):
 - 集成PyTorch Profiler提供更详细的性能分析
 - 自动保存显存事件数据
 ```
-
-#### 5.1.3 显存分析工具
-
-我们提供了专门的分析工具 `analyze_memory.py` 来处理收集到的显存数据，该工具可以解析JSON格式的显存事件记录，提取关键指标，并生成可视化报告：
-
-```python
-def analyze_log_file(file_path: str) -> Dict[str, float]:
-    """解析memory_events.json文件，提取关键事件的峰值显存"""
-    with open(file_path, 'r') as f:
-        events = json.load(f)
-    
-    memory_data = {}
-    for event in events:
-        event_name = event.get("event")
-        peak_memory = event.get("peak_memory", 0)
-        incremental_memory = event.get("incremental_memory", 0)
-        if event_name:
-            memory_data[event_name] = format_b_to_mb(peak_memory or incremental_memory)
-    
-    return memory_data
-```
-
-分析工具的主要功能包括：
-
-- 解析显存事件日志文件
-- 计算各组件的显存占用
-- 区分基础显存和激活显存
-- 生成可视化图表和Markdown格式报告
-- 提供优化建议
 
 ### 6.2 日志格式和目录管理
 
