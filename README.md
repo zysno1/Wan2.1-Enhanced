@@ -143,29 +143,28 @@ bash tests/scripts/run_memory_tests.sh tests/configs/baseline.yaml
 
 *展示了两只拟人化猫咪穿着舒适的拳击装备在聚光灯舞台上激烈对战的场景，动作流畅自然，细节丰富*
 
-#### 4.1.2 第二部分：CPU模型卸载
+#### 4.1.2 第二部分：测试基线（10秒视频）
 
-**配置 (`cpu_offload.yaml`)**
+**配置 (`baseline-10s.yaml`)**
 
 ```yaml
-name: "CPU-offload"
-description: "T5 Model offload to CPU"
+name: "baseline"
+description: "Baseline configuration without optimizations"
 
 model_config:
   task: "t2v-1.3B"
   size: "832*480"
-  load_strategy: "block"     # 模型加载策略：full/block
-  offload_model: true       # 卸载到CPU
+  offload_model: false    # 卸载到CPU 
   precision: "fp16"         # 计算精度：fp32/fp16/bf16
   device: "cuda"           # 运行设备
   ckpt_dir: /workspace/Wan2.1-Enhanced/Wan2.1-T2V-1.3B
 
 optimization:
-  attention_slicing: false   # 注意力切片
   gradient_checkpointing: false
   batch_size: 1
   micro_batch_size: 1
   parallel_degree: 1       # 模型并行度
+  frame_num: 162
 
 logging:
   profile_memory: true
@@ -180,24 +179,24 @@ Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely 
 
 **执行命令**
 ```bash
-bash tests/scripts/run_memory_tests.sh tests/configs/cpu_offload.yaml
+bash tests/scripts/run_memory_tests.sh tests/configs/baseline-10s.yaml
 ```
 
 **测试结果**
  
- - **显存峰值**：8.20 GB（总峰值显存）
- - **模型组件显存**：5.92 GB (基础显存) + 9.90 GB (激活显存) + 5.92 GB (KV缓存)
- - **纯运行时开销**：2.47 GB
- - **生成时间**：633.89 秒
-   - 模型加载：142.58 秒
-   - T5编码：397.61 秒
-   - DiT前向推理：224.19 秒
-   - VAE解码：9.08 秒
+ - **显存峰值**：24.52 GB（总峰值显存）
+ - **模型组件显存**：23.73 GB (基础显存: 16.76 GB + 激活显存: 6.96 GB + KV缓存: 0.02 GB)
+ - **纯运行时开销**：1.34 GB
+ - **生成时间**：615.72 秒
+   - 模型加载：8.61 秒
+   - T5编码：0.41 秒  
+   - DiT前向推理：597.43 秒
+   - VAE解码：17.73 秒
  - **详细显存分布**：
-   - DiT模型：5413.04 MB (基础) + 3608.07 MB (激活)
-   - T5模型：0 MB (基础) + 0 MB (激活) + 0 MB (KV缓存)
-   - VAE模型：505.75 MB (基础) + 370.20 MB (激活)
-   - PyTorch/CUDA运行时开销：2472.56 MB
+   - DiT模型：5439.81 MB (基础) + 6202.45 MB (激活)
+   - T5模型：10836.48 MB (基础) + 17.00 MB (激活) + 17.00 MB (KV缓存)
+   - VAE模型：485.95 MB (基础) + 735.82 MB (激活)
+   - PyTorch/CUDA运行时开销：1371.28 MB
  
  #### 4.1.3 第三部分：模型量化
 
