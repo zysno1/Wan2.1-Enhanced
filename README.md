@@ -344,14 +344,15 @@ Wan2.1-Enhanced/
 ├── ... (项目原有文件)
 ├── tests/                          # 测试脚本和相关资源
 │   ├── configs/                    # 推理配置文件目录
+│   │   ├── baseline-10s.yaml
 │   │   ├── baseline.yaml
-│   │   └── memory_opt.yaml
-│   ├── scripts/                    # 测试执行脚本
-│   │   └── run_memory_tests.sh
-│   └── README.md
-├── profiler_logs/                  # 性能分析日志
-│   ├── t2v-1.3B-fp32/
-│   │   ├── memory_events.json
+│   │   ├── cpu-offload.yaml
+│   │   └── quantization.yaml
+│   └── scripts/                    # 测试执行脚本
+│       ├── analyzer.py
+│       └── run_memory_tests.sh
+├── profiler_logs/                  # 性能分析日志 (此目录用于存放性能分析结果，通常在运行测试后生成)
+└── README.md
 ```
 
 ## 7. 参数说明
