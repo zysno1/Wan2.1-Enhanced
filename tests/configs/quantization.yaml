@@ -1,13 +1,15 @@
-name: "baseline"
-description: "Baseline configuration without optimizations"
+name: "Quantization"
+description: "4-bit quantization for the model"
 
 model_config:
+  ckpt_dir: /workspace/Wan2.1-Enhanced/Wan2.1-T2V-1.3B
   task: "t2v-1.3B"
   size: "832*480"
-  offload_model: false    # 卸载到CPU 
+  offload_model: true       # 卸载到CPU
   precision: "bf16"         # 计算精度：fp32/fp16/bf16
   device: "cuda"           # 运行设备
-  ckpt_dir: /workspace/Wan2.1-Enhanced/Wan2.1-T2V-1.3B
+
+quantization: true
 
 optimization:
 

@@ -214,7 +214,9 @@ def _validate_args(args):
 
     # The default number of frames are 1 for text-to-image tasks and 81 for other tasks.
     if args.frame_num is None:
-        args.frame_num = 1 if "t2i" in args.task else 81
+        # If not set by command line, check config, otherwise use default
+        if 'frame_num' not in args:
+            args.frame_num = 1 if "t2i" in args.task else 81
 
     # T2I frame_num check
     if "t2i" in args.task:
@@ -237,6 +239,12 @@ def _parse_args():
         type=str,
         default=None,
         help="The path to the configuration file."
+    )
+    parser.add_argument(
+        "--quantization",
+        type=str2bool,
+        default=False,
+        help="Whether to use 4-bit quantization for the model."
     )
     parser.add_argument(
         "--task",
@@ -262,12 +270,6 @@ def _parse_args():
         type=str,
         default=None,
         help="The path to the checkpoint directory.")
-    parser.add_argument(
-        "--offload_model",
-        type=str2bool,
-        default=None,
-        help="Whether to offload the model to CPU after each model forward, reducing GPU memory usage."
-    )
     parser.add_argument(
         "--ulysses_size",
         type=int,
@@ -405,11 +407,6 @@ def generate(args, memory_profiler=None):
     local_rank = int(os.getenv("LOCAL_RANK", 0))
     device = local_rank
     _init_logging(rank)
-
-    if args.offload_model is None:
-        args.offload_model = False if world_size > 1 else True
-        logging.info(
-            f"offload_model is not specified, set to {args.offload_model}.")
     if world_size > 1:
         torch.cuda.set_device(local_rank)
         dist.init_process_group(
@@ -455,6 +452,15 @@ def generate(args, memory_profiler=None):
                 f"Unsupport prompt_extend_method: {args.prompt_extend_method}")
 
     cfg = WAN_CONFIGS[args.task]
+
+    if hasattr(args, 'precision'):
+        if args.precision == 'fp16':
+            cfg.param_dtype = torch.float16
+        elif args.precision == 'bf16':
+            cfg.param_dtype = torch.bfloat16
+        elif args.precision == 'fp32':
+            cfg.param_dtype = torch.float32
+
     if args.ulysses_size > 1:
         assert cfg.num_heads % args.ulysses_size == 0, f"`{cfg.num_heads=}` cannot be divided evenly by `{args.ulysses_size=}`."
 
@@ -502,9 +508,10 @@ def generate(args, memory_profiler=None):
             rank=rank,
             t5_fsdp=args.t5_fsdp,
             dit_fsdp=args.dit_fsdp,
-            use_usp=(args.ulysses_size > 1 or args.ring_size > 1),
+            use_usp=args.ulysses_size > 1 or args.ring_size > 1,
             t5_cpu=args.t5_cpu,
-            memory_profiler=memory_profiler,
+            quantization=args.quantization,
+            memory_profiler=memory_profiler
         )
         if memory_profiler:
             duration = time.time() - start_time
@@ -521,15 +528,14 @@ def generate(args, memory_profiler=None):
             memory_profiler.log_event('generate_start', {'timestamp': time.time()})
         gen_start_time = time.time()
         video = wan_t2v.generate(
-            args.prompt,
+            input_prompt=args.prompt,
             size=SIZE_CONFIGS[args.size],
             frame_num=args.frame_num,
             shift=args.sample_shift,
             sample_solver=args.sample_solver,
             sampling_steps=args.sample_steps,
             guide_scale=args.sample_guide_scale,
-            seed=args.base_seed,
-            offload_model=args.offload_model)
+            seed=args.base_seed)
         if memory_profiler:
             memory_profiler.log_event('generate_end', {'timestamp': time.time()})
             gen_duration = time.time() - gen_start_time
@@ -578,7 +584,9 @@ def generate(args, memory_profiler=None):
             dit_fsdp=args.dit_fsdp,
             use_usp=(args.ulysses_size > 1 or args.ring_size > 1),
             t5_cpu=args.t5_cpu,
+            init_on_cpu=args.init_on_cpu,
             memory_profiler=memory_profiler,
+            quantization=args.quantization,
         )
         if memory_profiler:
             duration = time.time() - start_time
@@ -598,7 +606,7 @@ def generate(args, memory_profiler=None):
             sampling_steps=args.sample_steps,
             guide_scale=args.sample_guide_scale,
             seed=args.base_seed,
-            offload_model=args.offload_model)
+            )
         if memory_profiler:
             memory_profiler.log_event('generate_end', {'timestamp': time.time()})
             gen_duration = time.time() - gen_start_time
@@ -649,6 +657,7 @@ def generate(args, memory_profiler=None):
             use_usp=(args.ulysses_size > 1 or args.ring_size > 1),
             t5_cpu=args.t5_cpu,
             memory_profiler=memory_profiler,
+            quantization=args.quantization,
         )
         if memory_profiler:
             duration = time.time() - start_time
@@ -709,6 +718,7 @@ def generate(args, memory_profiler=None):
             use_usp=(args.ulysses_size > 1 or args.ring_size > 1),
             t5_cpu=args.t5_cpu,
             memory_profiler=memory_profiler,
+            quantization=args.quantization,
         )
         if memory_profiler:
             duration = time.time() - start_time
@@ -797,10 +807,14 @@ if __name__ == '__main__':
                 setattr(args, key, value)
         if 'optimization' in config:
             for key, value in config['optimization'].items():
-                setattr(args, key, value)
+                if key != 'load_strategy':
+                    setattr(args, key, value)
         if 'logging' in config:
             for key, value in config['logging'].items():
                 setattr(args, key, value)
+
+        if 'quantization' in config:
+            args.quantization = config['quantization']
         
         # Fix: Map offload_model to t5_cpu for proper T5 model offloading
         if hasattr(args, 'offload_model'):

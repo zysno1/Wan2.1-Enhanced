@@ -109,7 +109,8 @@ class WanSelfAttention(nn.Module):
                  num_heads,
                  window_size=(-1, -1),
                  qk_norm=True,
-                 eps=1e-6):
+                 eps=1e-6,
+                 **kwargs):
         assert dim % num_heads == 0
         super().__init__()
         self.dim = dim
@@ -395,7 +396,8 @@ class WanModel(ModelMixin, ConfigMixin):
                  window_size=(-1, -1),
                  qk_norm=True,
                  cross_attn_norm=True,
-                 eps=1e-6):
+                 eps=1e-6,
+                 **kwargs):
         r"""
         Initialize the diffusion model backbone.
 
@@ -432,7 +434,7 @@ class WanModel(ModelMixin, ConfigMixin):
                 Epsilon value for normalization layers
         """
 
-        super().__init__()
+        super().__init__(**kwargs)
 
         assert model_type in ['t2v', 'i2v', 'flf2v', 'vace']
         self.model_type = model_type

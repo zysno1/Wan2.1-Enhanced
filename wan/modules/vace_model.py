@@ -82,10 +82,11 @@ class VaceWanModel(WanModel):
                  window_size=(-1, -1),
                  qk_norm=True,
                  cross_attn_norm=True,
-                 eps=1e-6):
+                 eps=1e-6,
+                 **kwargs):
         super().__init__(model_type, patch_size, text_len, in_dim, dim, ffn_dim,
                          freq_dim, text_dim, out_dim, num_heads, num_layers,
-                         window_size, qk_norm, cross_attn_norm, eps)
+                         window_size, qk_norm, cross_attn_norm, eps, **kwargs)
 
         self.vace_layers = [i for i in range(0, self.num_layers, 2)
                            ] if vace_layers is None else vace_layers

@@ -16,22 +16,11 @@ def analyze_log_file(log_file):
     with open(log_file, 'r') as f:
         content = f.read().strip()
         
-    # Try to parse as JSON array first, then fall back to JSONL format
     try:
         if content.startswith('['):
-            # JSON array format
             events = json.loads(content)
         else:
-            # JSONL format - each line is a separate JSON object
-            events = []
-            for line in content.split('\n'):
-                line = line.strip()
-                if line:
-                    try:
-                        events.append(json.loads(line))
-                    except json.JSONDecodeError as e:
-                        print(f"Warning: Skipping invalid JSON line: {line[:50]}... Error: {e}")
-                        continue
+            events = [json.loads(line) for line in content.split('\n') if line]
     except json.JSONDecodeError as e:
         print(f"Error: Failed to parse JSON file {log_file}: {e}")
         return {}
@@ -364,27 +353,17 @@ def find_latest_memory_events_file(base_dir="profiler_logs"):
 
 def main():
     parser = argparse.ArgumentParser(description='Analyze memory profiler logs and generate a report.')
-    parser.add_argument('--log_file', type=str, help='Path to the memory events log file (JSONL format). If not provided, will auto-detect the latest file.')
+    parser.add_argument('--input_file', type=str, required=True, help='Path to the memory events log file (JSON or JSONL format).')
     parser.add_argument('--output_file', type=str, default='enhanced_memory_analysis_report.md', help='Output file for the memory analysis report.')
     args = parser.parse_args()
 
-    # Auto-detect log file if not provided
-    if args.log_file:
-        log_file = args.log_file
-    else:
-        log_file = find_latest_memory_events_file()
-        if not log_file:
-            print("Error: No memory events file found. Please specify --log_file or ensure memory_events files exist in profiler_logs directory.")
-            return
-        print(f"Auto-detected log file: {log_file}")
-
-    if not os.path.isfile(log_file):
-        print(f"Error: Log file '{log_file}' not found.")
+    if not os.path.isfile(args.input_file):
+        print(f"Error: Log file '{args.input_file}' not found.")
         return
 
-    analysis_results = analyze_log_file(log_file)
+    analysis_results = analyze_log_file(args.input_file)
     if not analysis_results:
-        print(f"No events could be parsed from '{log_file}'.")
+        print(f"No events could be parsed from '{args.input_file}'.")
         return
         
     generate_report(analysis_results, args.output_file)

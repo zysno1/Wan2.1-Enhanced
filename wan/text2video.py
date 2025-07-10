@@ -40,6 +40,7 @@ class WanT2V:
         dit_fsdp=False,
         use_usp=False,
         t5_cpu=False,
+        quantization=False,
         memory_profiler=None,
     ):
         r"""
@@ -67,6 +68,7 @@ class WanT2V:
         self.config = config
         self.rank = rank
         self.t5_cpu = t5_cpu
+        self.quantization = quantization
 
         self.num_train_timesteps = config.num_train_timesteps
         self.param_dtype = config.param_dtype
@@ -126,7 +128,14 @@ class WanT2V:
             base_memory = torch.cuda.memory_allocated()
 
         logging.info(f"Creating WanModel from {checkpoint_dir}")
-        self.model = WanModel.from_pretrained(checkpoint_dir)
+        if self.quantization:
+            self.model = WanModel.from_pretrained(
+                checkpoint_dir, 
+                load_in_4bit=True
+            )
+        else:
+            self.model = WanModel.from_pretrained(checkpoint_dir)
+            self.model.to(self.device)
         self.model.eval().requires_grad_(False)
 
         if use_usp:
@@ -166,8 +175,7 @@ class WanT2V:
                  sampling_steps=50,
                  guide_scale=5.0,
                  n_prompt="",
-                 seed=-1,
-                 offload_model=True):
+                 seed=-1):
         if self.memory_profiler:
             self.memory_profiler.log_event('generate_start', {'timestamp': time.time()})
         r"""
@@ -222,19 +230,15 @@ class WanT2V:
         seed_g.manual_seed(seed)
 
         # preprocess
+        base_memory_before_encode = torch.cuda.memory_allocated()
         if not self.t5_cpu:
             self.text_encoder.model.to(self.device)
-            base_memory_before_encode = torch.cuda.memory_allocated()
             if self.memory_profiler:
                 self.memory_profiler.log_event('t5_encode_start', {'timestamp': time.time()})
             context = self.text_encoder([input_prompt])
             context_null = self.text_encoder([n_prompt])
             if self.memory_profiler:
                 self.memory_profiler.log_event('t5_encode_end', {'timestamp': time.time(), 'base_memory': base_memory_before_encode})
-            if self.memory_profiler:
-                self.memory_profiler.log_event('kv_cache', metadata={'model_name': 'T5', 'base_memory': base_memory_before_encode})
-            if offload_model:
-                self.text_encoder.model.cpu()
         else:
             # T5 CPU mode: model runs on CPU, no GPU memory usage for T5
             if self.memory_profiler:
@@ -248,8 +252,13 @@ class WanT2V:
             context_null = [t.to(self.device) for t in context_null]
             if self.memory_profiler:
                 # In CPU mode, T5 uses 0 GPU memory
-                self.memory_profiler.log_event('t5_encode_end', {'timestamp': time.time(), 'base_memory': 0})
+                self.memory_profiler.log_event('t5_encode_end', {'timestamp': time.time(), 'base_memory': base_memory_before_encode})
+
+        if self.memory_profiler:
+            if self.t5_cpu:
                 self.memory_profiler.log_event('kv_cache', metadata={'model_name': 'T5', 'base_memory': 0})
+            else:
+                self.memory_profiler.log_event('kv_cache', metadata={'model_name': 'T5', 'base_memory': base_memory_before_encode})
 
 
 
@@ -339,7 +348,7 @@ class WanT2V:
                 base_memory_after_forward = torch.cuda.memory_allocated()
                 self.memory_profiler.log_event('kv_cache', metadata={'model_name': 'DiT', 'base_memory': base_memory_after_forward})
 
-        if offload_model:
+        if self.t5_cpu:
             self.model.cpu()
             torch.cuda.empty_cache()
 

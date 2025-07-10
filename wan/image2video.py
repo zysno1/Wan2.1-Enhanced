@@ -43,6 +43,7 @@ class WanI2V:
         t5_cpu=False,
         init_on_cpu=True,
         memory_profiler=None,
+        quantization=False,
     ):
         r"""
         Initializes the image-to-video generation model components.
@@ -139,7 +140,10 @@ class WanI2V:
             base_memory = torch.cuda.memory_allocated()
 
         logging.info(f"Creating WanModel from {checkpoint_dir}")
-        self.model = WanModel.from_pretrained(checkpoint_dir)
+        model_kwargs = {}
+        if quantization:
+            model_kwargs['load_in_4bit'] = True
+        self.model = WanModel.from_pretrained(checkpoint_dir, **model_kwargs)
         self.model.eval().requires_grad_(False)
 
         if t5_fsdp or dit_fsdp or use_usp:

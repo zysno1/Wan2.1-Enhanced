@@ -47,6 +47,7 @@ class WanVace(WanT2V):
         use_usp=False,
         t5_cpu=False,
         memory_profiler=None,
+        quantization=False,
     ):
         r"""
         Initializes the Wan text-to-video generation model components.
@@ -130,7 +131,10 @@ class WanVace(WanT2V):
             base_memory = torch.cuda.memory_allocated()
 
         logging.info(f"Creating VaceWanModel from {checkpoint_dir}")
-        self.model = VaceWanModel.from_pretrained(checkpoint_dir)
+        model_kwargs = {}
+        if quantization:
+            model_kwargs['load_in_4bit'] = True
+        self.model = VaceWanModel.from_pretrained(checkpoint_dir, **model_kwargs)
         self.model.eval().requires_grad_(False)
 
         if use_usp:

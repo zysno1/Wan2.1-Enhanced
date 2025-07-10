@@ -15,7 +15,7 @@ optimization:
   batch_size: 1
   micro_batch_size: 1
   parallel_degree: 1       # 模型并行度
-  frame_num: 81
+  frame_num: 162
 
 logging:
   profile_memory: true
