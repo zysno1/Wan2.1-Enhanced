@@ -339,7 +339,7 @@ self.memory_profiler.log_event('dit_loaded', {'base_memory': base_memory})
 
 为了系统地管理测试过程中产生的各种文件，我们定义以下目录结构：
 
-```
+```text
 Wan2.1-Enhanced/
 ├── ... (项目原有文件)
 ├── tests/                          # 测试脚本和相关资源
