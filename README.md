@@ -83,24 +83,23 @@ description: "Baseline configuration without optimizations"
 model_config:
   task: "t2v-1.3B"
   size: "832*480"
-  load_strategy: "block"     # 模型加载策略：full/block
-  offload_model: "false"    # 卸载到CPU 
-  precision: "fp16"         # 计算精度：fp32/fp16/bf16
+  offload_model: false    # 卸载到CPU 
+  precision: "bf16"         # 计算精度：fp32/fp16/bf16
   device: "cuda"           # 运行设备
-  offload: false           # CPU 卸载开关
   ckpt_dir: /workspace/Wan2.1-Enhanced/Wan2.1-T2V-1.3B
 
 optimization:
-  attention_slicing: false   # 注意力切片
+
   gradient_checkpointing: false
   batch_size: 1
   micro_batch_size: 1
   parallel_degree: 1       # 模型并行度
+  frame_num: 81
 
 logging:
   profile_memory: true
   log_interval: 10         # 记录间隔（步数）
-  trace_path: "profiler_logs/baseline"
+  trace_path: "profiler_logs"
 ```
 
 **测试提示词**
@@ -155,11 +154,12 @@ model_config:
   task: "t2v-1.3B"
   size: "832*480"
   offload_model: false    # 卸载到CPU 
-  precision: "fp16"         # 计算精度：fp32/fp16/bf16
+  precision: "bf16"         # 计算精度：fp32/fp16/bf16
   device: "cuda"           # 运行设备
   ckpt_dir: /workspace/Wan2.1-Enhanced/Wan2.1-T2V-1.3B
 
 optimization:
+
   gradient_checkpointing: false
   batch_size: 1
   micro_batch_size: 1
@@ -204,30 +204,31 @@ bash tests/scripts/run_memory_tests.sh tests/configs/baseline-10s.yaml
 
 ```yaml
 name: "Quantization"
-description: ""
+description: "4-bit quantization for the model"
 
 model_config:
+  ckpt_dir: /workspace/Wan2.1-Enhanced/Wan2.1-T2V-1.3B
   task: "t2v-1.3B"
   size: "832*480"
-  load_strategy: "block"     # 模型加载策略：full/block
   offload_model: true       # 卸载到CPU
-  precision: "fp16"         # 计算精度：fp32/fp16/bf16
+  precision: "bf16"         # 计算精度：fp32/fp16/bf16
   device: "cuda"           # 运行设备
-  ckpt_dir: /workspace/Wan2.1-Enhanced/Wan2.1-T2V-1.3B
+
+quantization: true
 
 optimization:
-  attention_slicing: false   # 注意力切片
+
   gradient_checkpointing: false
   batch_size: 1
   micro_batch_size: 1
   parallel_degree: 1       # 模型并行度
-  quantization: true #模型量化
+  frame_num: 81
 
 logging:
   profile_memory: true
   log_interval: 10         # 记录间隔（步数）
   trace_path: "profiler_logs"
-    ```
+```
 
 **测试提示词**
 ```
